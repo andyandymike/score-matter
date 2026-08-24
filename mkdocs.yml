@@ -1,0 +1,81 @@
+site_name: ScoreMatter
+site_description: Auditable, local-first AI-assisted BGM authoring for games.
+site_author: ScoreMatter contributors
+site_url: https://andyandymike.github.io/score-matter/
+site_dir: artifacts/site
+repo_url: https://github.com/andyandymike/score-matter
+repo_name: andyandymike/score-matter
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  logo: assets/brand/score-matter-mark.svg
+  favicon: assets/brand/score-matter-mark.svg
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.action.edit
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Use light mode
+
+nav:
+  - Home: README.md
+  - Getting started: getting-started.md
+  - M0 contract: m0-contract.md
+  - Decisions:
+      - Offline authoring boundary: adr/0001-offline-authoring-boundary.md
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/andyandymike/score-matter
+      name: ScoreMatter on GitHub
+
+copyright: Copyright &copy; 2026 ScoreMatter contributors

@@ -1,0 +1,21 @@
+@import url("./theme.css");
+
+[data-md-color-scheme="default"] .score-kicker,
+[data-md-color-scheme="default"] .score-card__index {
+  color: #5b21b6;
+}
+
+[data-md-color-scheme="slate"] .score-kicker,
+[data-md-color-scheme="slate"] .score-card__index {
+  color: #c4b5fd;
+}
+
+.score-button:focus-visible {
+  outline: 3px solid var(--score-cyan);
+  outline-offset: 3px;
+}
+
+.score-button--primary:focus-visible,
+.score-button--ink:focus-visible {
+  outline-color: var(--score-gold);
+}

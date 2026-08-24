@@ -42,6 +42,8 @@ htmlcov/
 /artifacts/
 /renders/
 /benchmark-results/
+/output/playwright/
+/.playwright-cli/
 *.tmp.wav
 *.generated.wav
 *.log
