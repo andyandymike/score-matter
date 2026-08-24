@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-provider-options-mock-v1.json",
+  "title": "ScoreMatter Mock Provider Options v1",
+  "type": "object",
+  "required": ["schema", "waveform", "frequency_hz", "amplitude"],
+  "properties": {
+    "schema": { "const": "score-provider-options/mock/v1" },
+    "waveform": { "const": "sine" },
+    "frequency_hz": { "type": "number", "exclusiveMinimum": 0, "maximum": 20000 },
+    "amplitude": { "type": "number", "minimum": 0, "maximum": 0.9 }
+  },
+  "additionalProperties": false
+}

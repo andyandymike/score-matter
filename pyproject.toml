@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=75,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "score-matter"
+version = "0.1.0.dev0"
+description = "Auditable, local-first AI-assisted BGM authoring for games."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "Born Lu" },
+]
+keywords = ["audio", "bgm", "game-development", "music", "provenance"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Sound/Audio",
+]
+dependencies = [
+  "jsonschema==4.26.0",
+  "rfc8785==0.1.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/andyandymike/score-matter"
+Issues = "https://github.com/andyandymike/score-matter/issues"
+Source = "https://github.com/andyandymike/score-matter"
+
+[project.scripts]
+score-matter = "score_matter.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"score_matter.schemas" = ["*.json"]

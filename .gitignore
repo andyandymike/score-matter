@@ -1,0 +1,79 @@
+# Private planning and local evidence. These paths must never be committed.
+/spec/
+/planning-private/
+/.local/
+
+# Secrets and machine-local configuration.
+.env
+.env.*
+!.env.example
+*.local
+.pypirc
+*.key
+*.pem
+credentials.json
+
+# Editors and operating systems.
+.idea/
+.vscode/
+.vs/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python environments, caches, and build output.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+/build/
+/dist/
+
+# Generated authoring output and evidence.
+/artifacts/
+/renders/
+/benchmark-results/
+*.tmp.wav
+*.generated.wav
+*.log
+
+# Audio is local by default. A tiny public fixture requires an explicit
+# tests/fixtures/audio exception plus ASSET_RIGHTS.json and audit approval.
+*.wav
+*.flac
+*.mp3
+*.ogg
+*.opus
+*.m4a
+*.aac
+!tests/fixtures/audio/*.wav
+!tests/fixtures/audio/*.flac
+!tests/fixtures/audio/*.mp3
+!tests/fixtures/audio/*.ogg
+!tests/fixtures/audio/*.opus
+!tests/fixtures/audio/*.m4a
+!tests/fixtures/audio/*.aac
+
+# Models, weights, and provider caches are explicit local setup inputs.
+/models/
+/weights/
+/model-cache/
+/downloads/
+/.cache/
+/huggingface/
+/torch-cache/
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.gguf
+*.onnx

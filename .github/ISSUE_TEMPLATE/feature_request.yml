@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a bounded authoring or evidence capability.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Authoring problem
+      description: What concrete workflow cannot be completed today?
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Proposed boundary
+      description: State inputs, outputs, authority, failure mode, and what remains human-reviewed.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Model, data, service, and rights impact
+      description: List licenses, weights, network use, hardware needs, and redistribution constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Verifiable acceptance
+      description: Which deterministic tests and listening checks would establish the claim?
+    validations:
+      required: true

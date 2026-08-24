@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-plan-review-v1.json",
+  "title": "ScoreMatter Plan Review v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "review_id",
+    "brief_sha256",
+    "plan_sha256",
+    "reviewer_alias",
+    "decision",
+    "trust_level",
+    "reviewed_at"
+  ],
+  "properties": {
+    "schema": { "const": "score-plan-review/v1" },
+    "review_id": { "$ref": "#/$defs/id" },
+    "brief_sha256": { "$ref": "#/$defs/sha256" },
+    "plan_sha256": { "$ref": "#/$defs/sha256" },
+    "reviewer_alias": { "$ref": "#/$defs/id" },
+    "decision": { "enum": ["allow", "reject"] },
+    "trust_level": { "enum": ["fixture", "local_acknowledgement"] },
+    "reviewed_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    }
+  }
+}

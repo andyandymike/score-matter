@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-manual-source-v1.json",
+  "title": "ScoreMatter Manual Source v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "source_id",
+    "audio_sha256",
+    "supplied_by",
+    "source_kind",
+    "intended_use",
+    "rights_evidence_reference",
+    "rights_reviewed"
+  ],
+  "properties": {
+    "schema": { "const": "score-manual-source/v1" },
+    "source_id": { "$ref": "#/$defs/id" },
+    "audio_sha256": { "$ref": "#/$defs/sha256" },
+    "supplied_by": { "$ref": "#/$defs/id" },
+    "source_kind": {
+      "enum": ["project_authored", "user_owned", "commissioned", "licensed", "unknown"]
+    },
+    "intended_use": { "enum": ["local_preview", "internal_eval"] },
+    "rights_evidence_reference": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "rights_reviewed": { "const": false }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

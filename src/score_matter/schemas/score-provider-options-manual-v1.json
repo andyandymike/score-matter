@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-provider-options-manual-v1.json",
+  "title": "ScoreMatter Manual Provider Options v1",
+  "type": "object",
+  "required": ["schema"],
+  "properties": {
+    "schema": { "const": "score-provider-options/manual/v1" }
+  },
+  "additionalProperties": false
+}

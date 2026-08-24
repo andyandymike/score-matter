@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-brief-v1.json",
+  "title": "ScoreMatter Brief v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "brief_id",
+    "revision",
+    "project_id",
+    "cue_id",
+    "intended_use",
+    "gameplay",
+    "music",
+    "technical",
+    "constraints",
+    "references"
+  ],
+  "properties": {
+    "schema": { "const": "score-brief/v1" },
+    "brief_id": { "$ref": "#/$defs/id" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "project_id": { "$ref": "#/$defs/id" },
+    "cue_id": { "$ref": "#/$defs/id" },
+    "intended_use": {
+      "enum": ["local_preview", "internal_eval", "game_asset_candidate"]
+    },
+    "gameplay": {
+      "type": "object",
+      "required": [
+        "role",
+        "foreground_occupancy",
+        "entry_intent",
+        "exit_intent",
+        "neighbor_cue_ids"
+      ],
+      "properties": {
+        "role": { "$ref": "#/$defs/id" },
+        "foreground_occupancy": { "enum": ["low", "medium", "high"] },
+        "entry_intent": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "exit_intent": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "neighbor_cue_ids": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "music": {
+      "type": "object",
+      "required": [
+        "instrumental",
+        "mood",
+        "energy_curve",
+        "bpm",
+        "key_mode",
+        "meter",
+        "sections",
+        "instrumentation_prefer",
+        "instrumentation_avoid"
+      ],
+      "properties": {
+        "instrumental": { "type": "boolean" },
+        "mood": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "energy_curve": { "$ref": "#/$defs/id" },
+        "bpm": {
+          "type": "object",
+          "required": ["minimum", "target", "maximum"],
+          "properties": {
+            "minimum": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
+            "target": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
+            "maximum": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 }
+          },
+          "additionalProperties": false
+        },
+        "key_mode": {
+          "type": "object",
+          "required": ["key", "mode"],
+          "properties": {
+            "key": { "type": "string", "pattern": "^[a-g](#|b)?$" },
+            "mode": { "$ref": "#/$defs/id" }
+          },
+          "additionalProperties": false
+        },
+        "meter": {
+          "type": "object",
+          "required": ["beats", "unit"],
+          "properties": {
+            "beats": { "type": "integer", "minimum": 1, "maximum": 32 },
+            "unit": { "enum": [1, 2, 4, 8, 16, 32] }
+          },
+          "additionalProperties": false
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": ["section_id", "bars", "intent"],
+            "properties": {
+              "section_id": { "$ref": "#/$defs/id" },
+              "bars": { "type": "integer", "minimum": 1, "maximum": 1024 },
+              "intent": { "type": "string", "minLength": 1, "maxLength": 512 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "instrumentation_prefer": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "instrumentation_avoid": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "technical": {
+      "type": "object",
+      "required": [
+        "sample_rate_hz",
+        "channels",
+        "target_duration_samples",
+        "loop",
+        "source_format",
+        "delivery_format",
+        "loudness_profile_id"
+      ],
+      "properties": {
+        "sample_rate_hz": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "target_duration_samples": { "type": "integer", "minimum": 1, "maximum": 230400000 },
+        "loop": {
+          "type": "object",
+          "required": ["mode", "start_sample", "end_sample"],
+          "properties": {
+            "mode": { "enum": ["none", "full_file", "region"] },
+            "start_sample": { "type": "integer", "minimum": 0 },
+            "end_sample": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "source_format": { "enum": ["wav_pcm_s16le"] },
+        "delivery_format": { "enum": ["wav_pcm_s16le"] },
+        "loudness_profile_id": { "$ref": "#/$defs/id" }
+      },
+      "additionalProperties": false
+    },
+    "constraints": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": ["constraint_id", "enforcement", "value"],
+        "properties": {
+          "constraint_id": { "$ref": "#/$defs/id" },
+          "enforcement": { "enum": ["required", "preferred"] },
+          "value": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    "references": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["reference_id", "artifact_sha256", "rights_record_id"],
+        "properties": {
+          "reference_id": { "$ref": "#/$defs/id" },
+          "artifact_sha256": { "$ref": "#/$defs/sha256" },
+          "rights_record_id": { "$ref": "#/$defs/id" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-artifact-manifest-v1.json",
+  "title": "ScoreMatter Artifact Manifest v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "artifact_id",
+    "role",
+    "provenance",
+    "sha256",
+    "byte_count",
+    "store_path",
+    "media",
+    "parent_artifact_sha256",
+    "transforms",
+    "authority_class"
+  ],
+  "properties": {
+    "schema": { "const": "score-artifact-manifest/v1" },
+    "artifact_id": { "$ref": "#/$defs/id" },
+    "role": { "enum": ["raw", "derived_loop", "master", "preview", "delivery", "stem"] },
+    "provenance": { "enum": ["native_generated", "imported", "postprocessed", "derived_separation"] },
+    "sha256": { "$ref": "#/$defs/sha256" },
+    "byte_count": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+    "store_path": { "$ref": "#/$defs/path" },
+    "media": {
+      "type": "object",
+      "required": [
+        "container",
+        "codec",
+        "sample_rate_hz",
+        "channels",
+        "sample_width_bytes",
+        "frame_count"
+      ],
+      "properties": {
+        "container": { "const": "wav" },
+        "codec": { "const": "pcm_s16le" },
+        "sample_rate_hz": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "sample_width_bytes": { "const": 2 },
+        "frame_count": { "type": "integer", "minimum": 1, "maximum": 230400000 }
+      },
+      "additionalProperties": false
+    },
+    "parent_artifact_sha256": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/sha256" }
+    },
+    "transforms": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["transform_id", "tool_revision", "parameters"],
+        "properties": {
+          "transform_id": { "$ref": "#/$defs/id" },
+          "tool_revision": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "parameters": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "authority_class": { "enum": ["candidate", "evaluation_only"] }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]{0,511}$"
+    }
+  }
+}

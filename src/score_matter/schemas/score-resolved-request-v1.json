@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-resolved-request-v1.json",
+  "title": "ScoreMatter Resolved Request v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "request_id",
+    "brief_sha256",
+    "plan_sha256",
+    "plan_review_sha256",
+    "provider_descriptor_sha256",
+    "provider_id",
+    "candidate_index",
+    "requested_seed",
+    "output",
+    "controls",
+    "provider_options"
+  ],
+  "properties": {
+    "schema": { "const": "score-resolved-request/v1" },
+    "request_id": { "$ref": "#/$defs/id" },
+    "brief_sha256": { "$ref": "#/$defs/sha256" },
+    "plan_sha256": { "$ref": "#/$defs/sha256" },
+    "plan_review_sha256": { "$ref": "#/$defs/sha256" },
+    "provider_descriptor_sha256": { "$ref": "#/$defs/sha256" },
+    "provider_id": { "$ref": "#/$defs/id" },
+    "candidate_index": { "type": "integer", "minimum": 0, "maximum": 1023 },
+    "requested_seed": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "output": {
+      "type": "object",
+      "required": ["format", "sample_rate_hz", "channels", "duration_samples"],
+      "properties": {
+        "format": { "enum": ["wav_pcm_s16le"] },
+        "sample_rate_hz": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "duration_samples": { "type": "integer", "minimum": 1, "maximum": 230400000 }
+      },
+      "additionalProperties": false
+    },
+    "controls": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "control_id",
+          "value",
+          "enforcement",
+          "mapping",
+          "verification_plan"
+        ],
+        "properties": {
+          "control_id": { "$ref": "#/$defs/id" },
+          "value": {},
+          "enforcement": { "enum": ["required", "preferred"] },
+          "mapping": { "enum": ["native", "prompt_encoded", "postprocessed", "unsupported"] },
+          "verification_plan": { "enum": ["analyzer", "human", "both", "none"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "provider_options": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
