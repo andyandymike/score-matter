@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
   workflow_dispatch:
 
@@ -59,3 +58,22 @@ jobs:
 
       - name: Smoke installed CLI
         run: score-matter --help
+
+  release-gate:
+    name: Release Gate
+    if: ${{ always() }}
+    needs:
+      - m0
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Require every M0 job
+        shell: bash
+        env:
+          M0_RESULT: "${{ needs.m0.result }}"
+        run: |
+          printf '%s\n' "M0=$M0_RESULT"
+          if [ "$M0_RESULT" != "success" ]; then
+            exit 1
+          fi
