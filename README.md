@@ -21,9 +21,16 @@ digests, probes built-in providers, creates deterministic synthetic WAV
 fixtures, ingests bounded manual WAV input, stores immutable content-addressed
 artifacts, and replays their integrity evidence.
 
+Separately, the current reference machine has an ignored, machine-local Stable
+Audio 3 Small Music CPU/TFLite installation. Earlier exploratory smoke runs
+showed that it can generate audible candidates locally, but it is not registered
+as a ScoreMatter provider and the smoke artifacts were later removed. See the
+[SA3 local evaluation guide](docs/sa3-local-evaluation.md) and
+[ADR 0002](docs/adr/0002-stable-audio-3-small-local-evaluation.md).
+
 It does **not** currently provide:
 
-- a real music model or model download;
+- a tracked, bundled, managed, downloaded, or invoked real-model provider;
 - audio-quality, loop, vocal, key, BPM, or loudness approval;
 - creative or rights approval;
 - release packaging or Godot integration;
@@ -65,8 +72,10 @@ Run the repository verification:
 .venv\Scripts\python tools/audit_public_tree.py
 ```
 
-All generated runs, receipts, mock audio, imported audio, and private working
-material stay under ignored local paths.
+Generated runs, receipts, candidate audio, and private working material stay
+under ignored local paths. Machine-local model runtimes and weights belong under
+the separate ignored `models/` root; deleting `.local/` removes evidence but
+must not remove the installed model.
 
 ## Design boundary
 
@@ -90,7 +99,10 @@ Brief -> reviewed Plan -> resolved Request -> Provider
 - `tests/` — deterministic positive and negative evidence.
 - `tools/audit_public_tree.py` — tracked-tree privacy and artifact audit.
 - `spec/` — private working material, intentionally excluded from Git.
-- `.local/` — generated local evidence and audio, intentionally excluded.
+- `models/` — persistent machine-local provider source, environments, weights,
+  and caches, intentionally excluded.
+- `.local/` — generated candidates, receipts, and evaluation evidence,
+  intentionally excluded; cleanup loses evidence stored only there.
 
 ## Contributing
 

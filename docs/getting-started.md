@@ -89,3 +89,8 @@ score-matter --help
 
 Continue with the [M0 contract](m0-contract.md) for exact included and
 excluded claims.
+
+For the optional real-model research lane, read the
+[Stable Audio 3 local evaluation guide](sa3-local-evaluation.md). It describes
+an isolated machine-local runtime and manual-ingest bridge; it does not add a
+model call to this M0 path or register another built-in provider.

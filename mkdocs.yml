@@ -47,8 +47,10 @@ nav:
   - Home: README.md
   - Getting started: getting-started.md
   - M0 contract: m0-contract.md
+  - SA3 local evaluation: sa3-local-evaluation.md
   - Decisions:
       - Offline authoring boundary: adr/0001-offline-authoring-boundary.md
+      - Stable Audio 3 local evaluation: adr/0002-stable-audio-3-small-local-evaluation.md
 
 plugins:
   - search:

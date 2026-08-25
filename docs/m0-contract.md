@@ -180,3 +180,8 @@ canonicalization, storage, built-in fixture/ingest, and replay checks work for
 their tested inputs. It does not establish M0 completion, real-model
 compatibility, audio quality, creative approval, rights approval, signing,
 packaging, or game integration.
+
+An optional external model experiment is documented separately in the
+[Stable Audio 3 local evaluation guide](sa3-local-evaluation.md). That
+machine-local installation does not change this contract's model-free boundary
+or its three built-in providers.

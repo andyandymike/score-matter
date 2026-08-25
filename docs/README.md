@@ -15,6 +15,7 @@ hide:
     </p>
     <div class="score-actions">
       <a class="score-button score-button--primary" href="getting-started/">Run the M0 path →</a>
+      <a class="score-button score-button--secondary" href="sa3-local-evaluation/">Inspect the SA3 evaluation lane</a>
       <a class="score-button score-button--secondary" href="https://github.com/andyandymike/score-matter">View source on GitHub</a>
     </div>
   </div>
@@ -93,7 +94,7 @@ hide:
       <h2>Every handoff remains inspectable.</h2>
     </div>
     <p>
-      M0 proves the authoring spine before a real music model enters the system.
+      M0 proves the authoring spine independently of any real music model.
       A shipped game consumes ordinary audio and manifests, never ScoreMatter itself.
     </p>
   </div>
@@ -112,7 +113,7 @@ hide:
   <div class="score-section__head">
     <div>
       <span class="score-kicker">Current boundary</span>
-      <h2>Prove the kernel before adding a model.</h2>
+      <h2>Keep the kernel independent of the model.</h2>
     </div>
     <p>
       The public slice is deliberately narrow: deterministic fixture audio,
@@ -124,10 +125,14 @@ hide:
     <p>
       ScoreMatter does not yet generate useful BGM, approve loops or mix quality,
       establish rights, publish releases, or integrate with a game runtime.
-      Read the <a href="m0-contract/">M0 public contract</a> before relying on it.
+      A separate machine-local SA3 installation is an external evaluation
+      candidate, not a fourth built-in provider. Read the
+      <a href="m0-contract/">M0 public contract</a> and
+      <a href="sa3-local-evaluation/">SA3 evaluation boundary</a> before relying on either path.
     </p>
   </div>
   <div class="score-actions">
     <a class="score-button score-button--ink" href="getting-started/">Open the getting-started guide →</a>
+    <a class="score-button score-button--ink" href="sa3-local-evaluation/">Open the SA3 evaluation guide →</a>
   </div>
 </section>
