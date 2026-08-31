@@ -54,6 +54,7 @@ nav:
       - Stable Audio 3 local evaluation: adr/0002-stable-audio-3-small-local-evaluation.md
       - Stable Audio 3 Medium capability pilot: adr/0003-stable-audio-3-medium-capability-pilot.md
       - Bounded music director Phase A: adr/0004-bounded-music-director-phase-a.md
+      - Host-agent response ingest: adr/0005-host-agent-response-ingest.md
 
 plugins:
   - search:

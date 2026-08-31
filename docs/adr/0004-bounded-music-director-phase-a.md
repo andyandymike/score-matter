@@ -3,6 +3,11 @@
 Status: implementation authorized; Phase A execution not authorized  
 Date: 2026-08-30
 
+Scope note (2026-08-31): this ADR remains authoritative only for the optional
+`local_jsonl_command` diagnostic lane. [ADR 0005](0005-host-agent-response-ingest.md)
+adds model-agnostic host-agent response ingest as the primary authoring posture.
+Neither path is capability-pass-eligible.
+
 ## Context
 
 ScoreMatter already separates provider execution, immutable candidate evidence,

@@ -1,6 +1,7 @@
 # ScoreMatter
 
-Auditable, local-first AI-assisted BGM authoring for games.
+Auditable AI-assisted BGM authoring for games, with local evidence and offline
+game delivery.
 
 [![CI](https://github.com/andyandymike/score-matter/actions/workflows/ci.yml/badge.svg)](https://github.com/andyandymike/score-matter/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -10,6 +11,12 @@ providers behind typed requests, immutable artifacts, reproducible evidence,
 and explicit human review boundaries. A shipped game consumes ordinary audio
 and manifests; it does not require ScoreMatter, Python, a model, a network
 connection, or a GPU.
+
+ScoreMatter is model-agnostic. Its primary Director path captures the bare
+planning-response bytes produced by the user's current host agent, while local
+text models remain optional adapters. ScoreMatter preserves, validates,
+compiles, and records the untrusted response; it does not require a reasoning
+model in the repository core or in the shipped game.
 
 ## Status
 
@@ -33,24 +40,36 @@ adoption, rights, release, and consumer-game decision remain pending. See the
 [ADR 0002](docs/adr/0002-stable-audio-3-small-local-evaluation.md), and current
 [ADR 0003](docs/adr/0003-stable-audio-3-medium-capability-pilot.md).
 
-A separate bounded music-director Phase A kernel now provides strict planning
-contracts, a process-observed local JSONL diagnostic adapter, immutable traces,
-condition-hidden deterministic adjudication, fail-if-called audio/critic
-boundaries, and a fixed 14-primary + 2-repeat report. The current
-`local_jsonl_command` backend is always capability-pass-ineligible and can
-conclude at most `planning_blocked`: ordinary process invocation does not prove
-OS network, filesystem, or descendant-process isolation, one internal model
-inference, or absence of out-of-band hidden-fixture access. No director text
-model or execution plan is currently frozen or authorized, and no director
-model has been run. This is implementation evidence—not a claim that the agent
-can direct useful music. See the
+A separate bounded music-director kernel now provides strict planning
+contracts, immutable traces, deterministic compilation and adjudication, and
+fail-if-called audio/critic boundaries. The primary authoring posture is
+`host_agent_response_ingest`: ScoreMatter freezes the exact submitted Director
+packet together with a fresh evidence root and an out-of-root no-replace claim
+path, while the host returns only bare response bytes. A separate capture step
+base64-wraps those bytes without parsing them, so even malformed JSON can be
+retained. Ingest claims the request before parsing, preserves both the exact
+host submission and decoded raw response, then validates and compiles when
+possible. A failed ingest still consumes that request; it is evidence, not a
+redraw opportunity. The optional `local_jsonl_command` posture starts one
+ordinary local process for diagnostic work. Both postures are always
+capability-pass-ineligible. Host ingest writes only a diagnostic ingest receipt;
+it never emits a formal Phase A report or `planning_blocked`, and it does not run
+or replace formal P01-P08. The current local Phase A runner can conclude at most
+`planning_blocked`. Host ingest cannot prove the host's full model-visible
+context, model routing, tool use, call count, token use, cost, or hidden-fixture
+isolation; ordinary process invocation cannot prove OS network, filesystem,
+descendant-process, internal-inference, or hidden-file isolation.
+No formal Director evaluation plan is currently frozen or authorized, and no
+formal Phase A run has occurred. Validated drafts are advisory implementation
+evidence—not a claim that the agent can direct useful music. See the
 [Phase A guide](docs/music-director-phase-a.md) and
-[ADR 0004](docs/adr/0004-bounded-music-director-phase-a.md).
+[ADR 0004](docs/adr/0004-bounded-music-director-phase-a.md) together with
+[ADR 0005](docs/adr/0005-host-agent-response-ingest.md).
 
 It does **not** currently provide:
 
 - a tracked, bundled, managed, downloaded, or invoked real-model provider;
-- a selected or capability-approved music-director text model;
+- a capability-approved Director execution or response-ingest posture;
 - audio-quality, loop, vocal, key, BPM, or loudness approval;
 - creative or rights approval;
 - release packaging or Godot integration;
@@ -93,15 +112,21 @@ Run the repository verification:
 ```
 
 Generated runs, receipts, candidate audio, and private working material stay
-under ignored local paths. Machine-local model runtimes and weights belong under
-the separate ignored `models/` root; deleting `.local/` removes evidence but
-must not remove the installed model.
+under ignored local paths. Optional machine-local model runtimes and weights
+belong under the separate ignored `models/` root; deleting `.local/` removes
+evidence but must not remove an installed model.
 
 ## Design boundary
 
 ```text
-Brief -> reviewed Plan -> resolved Request -> Provider
-      -> quarantined immutable Artifact -> Run receipt -> replay verification
+Project context -> bound host request -> host Agent -> bare response bytes
+                -> byte-exact capture -> no-replace ingest claim
+                -> retained submission/raw response
+                -> ScoreMatter validation/evidence -> Brief/Plan drafts
+                -> independent human selection and review
+                -> resolved Request -> Provider
+                -> quarantined immutable Artifact
+                -> Run receipt -> replay verification
 ```
 
 - Provider output is always a candidate.
@@ -120,8 +145,9 @@ Brief -> reviewed Plan -> resolved Request -> Provider
 - `tools/audit_public_tree.py` — tracked-tree privacy and artifact audit.
 - `tools/sa3_boundary_pilot.py` — generic external-pilot orchestration; exact
   plans, prompts, model files, terms evidence, and results stay private.
-- `src/score_matter/director/` — bounded planning contracts, adapter boundary,
-  deterministic compiler/adjudicator, immutable evidence, and Phase A runner.
+- `src/score_matter/director/` — bounded planning contracts, model-agnostic
+  host-response ingest, optional adapter boundary, deterministic
+  compiler/adjudicator, immutable evidence, and Phase A runner.
 - `spec/` — private working material, intentionally excluded from Git.
 - `models/` — persistent machine-local provider source, environments, weights,
   and caches, intentionally excluded.

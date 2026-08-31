@@ -16,6 +16,7 @@ from score_matter.paths import resolve_inside
 _RUN_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _ROLES = {
     "request",
+    "host-submission",
     "raw-response",
     "agent-response",
     "gap-report",
@@ -24,6 +25,7 @@ _ROLES = {
     "plan-draft",
     "trace",
     "run-result",
+    "host-ingest-receipt",
 }
 
 

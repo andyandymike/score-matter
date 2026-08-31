@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime
 from functools import lru_cache
 from importlib.resources import files
@@ -9,7 +11,12 @@ from typing import Any, Iterable
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from .canonical import canonical_sha256, load_json_bytes, load_json_file
+from .canonical import (
+    canonical_sha256,
+    load_json_bytes,
+    load_json_file,
+    sha256_bytes,
+)
 from .errors import ContractError
 from .paths import validate_relative_path
 
@@ -30,6 +37,10 @@ SCHEMA_FILES = {
     "score-direction-set/v1": "score-direction-set-v1.json",
     "score-director-trace/v1": "score-director-trace-v1.json",
     "score-director-command-descriptor/v1": "score-director-command-descriptor-v1.json",
+    "score-director-host-request/v1": "score-director-host-request-v1.json",
+    "score-director-host-submission/v1": "score-director-host-submission-v1.json",
+    "score-director-host-ingest-claim/v1": "score-director-host-ingest-claim-v1.json",
+    "score-director-host-ingest-receipt/v1": "score-director-host-ingest-receipt-v1.json",
     "score-director-execution-claim/v1": "score-director-execution-claim-v1.json",
     "score-director-evaluation-plan/v1": "score-director-evaluation-plan-v1.json",
     "score-director-adjudication/v1": "score-director-adjudication-v1.json",
@@ -413,6 +424,198 @@ def _validate_phase_a_report_inventory(runs: list[dict[str, Any]]) -> None:
             raise ContractError("Phase A repeat result must name its matching primary result")
 
 
+def _validate_host_observed_usage(document: dict[str, Any]) -> None:
+    disclosure = document["host_disclosure"]
+    usage_values = tuple(document["usage"].values())
+    if disclosure["usage_observation"] == "unavailable":
+        if any(value is not None for value in usage_values):
+            raise ContractError("unavailable host usage requires null usage values")
+    elif any(value is None for value in usage_values):
+        raise ContractError(
+            "reported or declared host usage requires every usage value"
+        )
+
+
+def _validate_host_response_capture(document: dict[str, Any]) -> None:
+    capture = document["response_capture"]
+    try:
+        raw_response = base64.b64decode(capture["data_base64"], validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ContractError("host response capture contains invalid base64") from exc
+    if len(raw_response) != capture["raw_byte_count"]:
+        raise ContractError("host response capture byte count does not match its data")
+    if sha256_bytes(raw_response) != capture["raw_sha256"]:
+        raise ContractError("host response capture digest does not match its data")
+
+
+def _validate_host_ingest_claim(document: dict[str, Any]) -> None:
+    evidence_root = Path(document["evidence_root"])
+    if not evidence_root.is_absolute():
+        raise ContractError("host ingest claim evidence_root must be absolute")
+    if evidence_root == Path(evidence_root.anchor):
+        raise ContractError(
+            "host ingest claim evidence_root cannot be a filesystem root"
+        )
+
+
+def _validate_host_ingest_receipt(document: dict[str, Any]) -> None:
+    validation = document["validation"]
+    conclusion = document["conclusion"]
+    errors = validation["errors"]
+
+    ordered_flags = (
+        "submission_json_valid",
+        "submission_schema_valid",
+        "request_binding_matched",
+        "response_json_valid",
+        "response_schema_valid",
+    )
+    for prerequisite, dependent in zip(ordered_flags, ordered_flags[1:]):
+        if validation[dependent] and not validation[prerequisite]:
+            raise ContractError(
+                f"host ingest validation {dependent} requires {prerequisite}"
+            )
+
+    agent_sha256 = document["agent_response_sha256"]
+    gap_sha256 = document["gap_report_sha256"]
+    raw_submission_sha256 = document["raw_submission_sha256"]
+    retained_raw_submission_sha256 = document["retained_raw_submission_sha256"]
+    raw_response_sha256 = document["raw_response_sha256"]
+    retained_raw_response_sha256 = document["retained_raw_response_sha256"]
+    if (
+        validation["submission_json_valid"]
+        and raw_submission_sha256 != retained_raw_submission_sha256
+    ):
+        raise ContractError(
+            "parsed host submission must bind its exact retained raw bytes"
+        )
+    if (raw_response_sha256 is None) != (retained_raw_response_sha256 is None):
+        raise ContractError(
+            "host raw response and retained response digests must appear together"
+        )
+    if (
+        raw_response_sha256 is not None
+        and raw_response_sha256 != retained_raw_response_sha256
+    ):
+        raise ContractError(
+            "captured host response must bind its exact retained raw bytes"
+        )
+    if validation["request_binding_matched"] != (raw_response_sha256 is not None):
+        raise ContractError(
+            "request-bound host submissions require retained raw response evidence"
+        )
+    if validation["response_json_valid"] and raw_response_sha256 is None:
+        raise ContractError("valid host response JSON requires raw response evidence")
+    draft_keys = (
+        "direction_set_sha256",
+        "brief_draft_sha256",
+        "plan_draft_sha256",
+    )
+    draft_presence = [document[key] is not None for key in draft_keys]
+    if any(draft_presence) and not all(draft_presence):
+        raise ContractError("host ingest draft evidence requires the complete hash chain")
+    if gap_sha256 is not None and agent_sha256 is None:
+        raise ContractError("host ingest gap evidence requires its agent response hash")
+    if all(draft_presence) and (agent_sha256 is None or gap_sha256 is None):
+        raise ContractError(
+            "host ingest draft evidence requires agent response and gap hashes"
+        )
+    if validation["response_schema_valid"]:
+        if agent_sha256 is None or gap_sha256 is None:
+            raise ContractError(
+                "compiled host response requires agent response and gap hashes"
+            )
+    elif gap_sha256 is not None or any(draft_presence):
+        raise ContractError(
+            "uncompiled host response cannot bind gap or draft evidence"
+        )
+    if agent_sha256 is not None and not validation["submission_schema_valid"]:
+        raise ContractError(
+            "host agent response evidence requires a schema-valid submission envelope"
+        )
+    if agent_sha256 is not None and not validation["response_json_valid"]:
+        raise ContractError(
+            "host agent response evidence requires a parsed JSON response"
+        )
+
+    adjudication = document["adjudication_result"]
+    semantic_valid = validation["semantic_valid"]
+    if adjudication is not None:
+        if document["adjudication_sha256"] is None:
+            raise ContractError(
+                "host adjudication result requires an adjudication digest"
+            )
+        if semantic_valid is None:
+            raise ContractError(
+                "host adjudication result requires an outer semantic result"
+            )
+        if adjudication["validation"]["semantic_valid"] != semantic_valid:
+            raise ContractError(
+                "host ingest outer and adjudication semantic results differ"
+            )
+        for key in (
+            "critical_hallucinations",
+            "authority_escalations",
+            "forbidden_claims",
+        ):
+            _require_unique_ids(adjudication[key], "finding_id", f"host {key}")
+        if semantic_valid and any(
+            adjudication[key]
+            for key in (
+                "critical_hallucinations",
+                "authority_escalations",
+                "forbidden_claims",
+            )
+        ):
+            raise ContractError(
+                "semantic-valid host adjudication cannot retain adverse findings"
+            )
+    elif semantic_valid is not None:
+        raise ContractError(
+            "host semantic result requires retained adjudication evidence"
+        )
+
+    completed = all(validation[key] for key in ordered_flags)
+    if conclusion == "diagnostic_contract_validated":
+        if (
+            not completed
+            or semantic_valid is not None
+            or document["adjudication_sha256"] is not None
+            or adjudication is not None
+            or errors
+        ):
+            raise ContractError(
+                "diagnostic_contract_validated contradicts host ingest evidence"
+            )
+    elif conclusion == "diagnostic_adjudication_matched":
+        if not completed or semantic_valid is not True or adjudication is None or errors:
+            raise ContractError(
+                "diagnostic_adjudication_matched contradicts host ingest evidence"
+            )
+    elif conclusion == "diagnostic_adjudication_failed":
+        if (
+            not completed
+            or semantic_valid is not False
+            or adjudication is None
+            or not errors
+            or not any(
+                item["code"] == "director_adjudication_failed" for item in errors
+            )
+        ):
+            raise ContractError(
+                "diagnostic_adjudication_failed contradicts host ingest evidence"
+            )
+    elif conclusion == "submission_rejected":
+        if not errors or semantic_valid is not None or adjudication is not None:
+            raise ContractError("submission_rejected requires retained failure evidence")
+        if completed and document["adjudication_sha256"] is None:
+            raise ContractError(
+                "a rejected, fully compiled host response requires adjudication input"
+            )
+
+    _validate_host_observed_usage(document)
+
+
 def _validate_semantics(document: dict[str, Any]) -> None:
     schema_id = document["schema"]
 
@@ -511,6 +714,52 @@ def _validate_semantics(document: dict[str, Any]) -> None:
             raise ContractError(
                 "local_jsonl_command isolation is observation-only and cannot claim enforcement"
             )
+
+    elif schema_id == "score-director-host-request/v1":
+        validate_document(
+            document["context"], expected_schema="score-director-context/v1"
+        )
+        validate_document(
+            document["provider_descriptor"],
+            expected_schema="score-provider-descriptor/v1",
+        )
+        descriptor_sha256 = canonical_sha256(document["provider_descriptor"])
+        if document["context"]["provider_descriptor_sha256"] != descriptor_sha256:
+            raise ContractError(
+                "host request context binds a different provider descriptor"
+            )
+        if document["policy"]["sha256"] != sha256_bytes(
+            document["policy"]["text"].encode("utf-8")
+        ):
+            raise ContractError("host request policy digest does not match its text")
+
+    elif schema_id == "score-director-host-submission/v1":
+        disclosure = document["host_disclosure"]
+        identity_values = (disclosure["model_id"], disclosure["model_revision"])
+        if disclosure["identity_observation"] == "unavailable":
+            if identity_values != (None, None):
+                raise ContractError(
+                    "unavailable host identity requires null model_id and model_revision"
+                )
+        elif any(value is None for value in identity_values):
+            raise ContractError(
+                "reported or declared host identity requires model_id and model_revision"
+            )
+        _validate_host_observed_usage(document)
+        _validate_host_response_capture(document)
+        if (
+            disclosure["tool_observation"] == "unavailable"
+            and document["observed_tool_calls"]
+        ):
+            raise ContractError(
+                "unavailable host tool observation cannot carry observed tool calls"
+            )
+
+    elif schema_id == "score-director-host-ingest-claim/v1":
+        _validate_host_ingest_claim(document)
+
+    elif schema_id == "score-director-host-ingest-receipt/v1":
+        _validate_host_ingest_receipt(document)
 
     elif schema_id == "score-director-evaluation-plan/v1":
         _validate_phase_a_inventory(document["fixtures"], document["run_inventory"])

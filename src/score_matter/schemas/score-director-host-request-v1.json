@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-host-request-v1.json",
+  "title": "ScoreMatter Director Host Request v1",
+  "description": "The exact ScoreMatter packet intentionally submitted to an external host agent. It is not evidence of the host's complete model-visible context.",
+  "type": "object",
+  "required": [
+    "schema",
+    "run_id",
+    "evidence_root",
+    "ingest_claim_path",
+    "policy",
+    "context",
+    "provider_descriptor",
+    "response_schema",
+    "capture",
+    "phase_constraints",
+    "assurance_notice"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-host-request/v1" },
+    "run_id": { "$ref": "#/$defs/id" },
+    "evidence_root": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "ingest_claim_path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "policy": {
+      "type": "object",
+      "required": ["version", "sha256", "text"],
+      "properties": {
+        "version": { "const": "score-director-policy/v1" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 16384 }
+      },
+      "additionalProperties": false
+    },
+    "context": { "type": "object" },
+    "provider_descriptor": { "type": "object" },
+    "response_schema": { "const": "score-director-agent-response/v1" },
+    "capture": {
+      "type": "object",
+      "required": ["schema", "applied_by", "host_output", "max_response_bytes"],
+      "properties": {
+        "schema": { "const": "score-director-host-submission/v1" },
+        "applied_by": { "const": "operator_or_host_capture" },
+        "host_output": { "const": "bare_agent_response" },
+        "max_response_bytes": { "const": 524288 }
+      },
+      "additionalProperties": false
+    },
+    "phase_constraints": {
+      "type": "object",
+      "required": [
+        "allowed_tools",
+        "generator_calls",
+        "critic_calls",
+        "reference_audio_reader_calls",
+        "max_clarification_rounds",
+        "max_questions",
+        "grants_no_approval_authority"
+      ],
+      "properties": {
+        "allowed_tools": { "const": [] },
+        "generator_calls": { "const": 0 },
+        "critic_calls": { "const": 0 },
+        "reference_audio_reader_calls": { "const": 0 },
+        "max_clarification_rounds": { "const": 1 },
+        "max_questions": { "const": 3 },
+        "grants_no_approval_authority": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "assurance_notice": {
+      "type": "object",
+      "required": [
+        "submission_mode",
+        "kernel_invokes_model",
+        "complete_model_visible_context_verified",
+        "capability_pass_eligible"
+      ],
+      "properties": {
+        "submission_mode": { "const": "external_host_agent" },
+        "kernel_invokes_model": { "const": false },
+        "complete_model_visible_context_verified": { "const": false },
+        "capability_pass_eligible": { "const": false }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

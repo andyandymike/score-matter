@@ -12,6 +12,13 @@ from .canonical import canonical_sha256, file_sha256, write_canonical_no_replace
 from .contracts import load_contract, validate_document
 from .demo import create_demo_bundle
 from .director.evidence import DirectorEvidenceStore
+from .director.host import (
+    HOST_RESPONSE_CAPTURE_MAX_BYTES,
+    build_host_agent_request,
+    build_host_agent_submission,
+    ingest_host_agent_submission,
+    validate_host_agent_request,
+)
 from .director.kernel import director_kernel_manifest, director_kernel_sha256
 from .director.phase_a import (
     command_backend_from_descriptor,
@@ -27,10 +34,13 @@ from .providers.registry import descriptor_for, provider_ids
 from .store import ArtifactStore
 
 
+HOST_SUBMISSION_READ_MAX_BYTES = 16 * 1024 * 1024
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="score-matter",
-        description="Auditable, local-first BGM authoring evidence core.",
+        description="Auditable, model-agnostic BGM authoring evidence core.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -113,6 +123,44 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Print the runtime-recomputed Director kernel identity without a model call.",
     )
     director_kernel.set_defaults(handler=_handle_director_kernel_digest)
+    host_parser = director_commands.add_parser(
+        "host", help="Export or ingest model-agnostic host-agent planning packets."
+    )
+    host_commands = host_parser.add_subparsers(
+        dest="director_host_command", required=True
+    )
+    host_request = host_commands.add_parser(
+        "request",
+        help="Write the exact packet to submit to the current host agent.",
+    )
+    host_request.add_argument("--run-id", required=True)
+    host_request.add_argument("--context", type=Path, required=True)
+    host_request.add_argument("--provider-descriptor", type=Path, required=True)
+    host_request.add_argument("--evidence-root", type=Path, required=True)
+    host_request.add_argument("--claim-path", type=Path, required=True)
+    host_request.add_argument("--output", type=Path, required=True)
+    host_request.set_defaults(handler=_handle_director_host_request)
+
+    host_capture = host_commands.add_parser(
+        "capture",
+        help="Wrap one bare host-agent response without inventing unavailable observations.",
+    )
+    host_capture.add_argument("--request", type=Path, required=True)
+    host_capture.add_argument("--response", type=Path, required=True)
+    host_capture.add_argument("--submission-id", required=True)
+    host_capture.add_argument("--host-product", required=True)
+    host_capture.add_argument("--output", type=Path, required=True)
+    host_capture.set_defaults(handler=_handle_director_host_capture)
+
+    host_ingest = host_commands.add_parser(
+        "ingest",
+        help="Retain and validate one existing host-agent submission without a model call.",
+    )
+    host_ingest.add_argument("--request", type=Path, required=True)
+    host_ingest.add_argument("--submission", type=Path, required=True)
+    host_ingest.add_argument("--adjudication", type=Path)
+    host_ingest.add_argument("--output", type=Path, required=True)
+    host_ingest.set_defaults(handler=_handle_director_host_ingest)
     phase_a_parser = director_commands.add_parser(
         "phase-a", help="Preflight or run the frozen Director Phase A inventory."
     )
@@ -336,6 +384,170 @@ def _handle_director_kernel_digest(args: argparse.Namespace) -> int:
         f"sha256={director_kernel_sha256()} files={len(manifest['files'])} model_calls=0"
     )
     return 0
+
+
+def _handle_director_host_request(args: argparse.Namespace) -> int:
+    context = load_contract(
+        args.context, expected_schema="score-director-context/v1"
+    )
+    provider_descriptor = load_contract(
+        args.provider_descriptor, expected_schema="score-provider-descriptor/v1"
+    )
+    request = build_host_agent_request(
+        run_id=args.run_id,
+        context=context,
+        provider_descriptor=provider_descriptor,
+        evidence_root=args.evidence_root,
+        ingest_claim_path=args.claim_path,
+    )
+    request_output = args.output.resolve(strict=False)
+    frozen_evidence_root = Path(request["evidence_root"])
+    frozen_claim_path = Path(request["ingest_claim_path"])
+    if frozen_evidence_root.exists() or frozen_evidence_root.is_symlink():
+        raise BoundaryError(
+            "host request requires a fresh, nonexistent evidence_root",
+            code="destination_exists",
+        )
+    if frozen_claim_path.exists() or frozen_claim_path.is_symlink():
+        raise BoundaryError(
+            "host request requires a fresh, nonexistent ingest claim path",
+            code="director_host_ingest_already_claimed",
+        )
+    if (
+        request_output == frozen_evidence_root
+        or frozen_evidence_root in request_output.parents
+    ):
+        raise BoundaryError(
+            "host request output must be outside its fresh evidence_root",
+            code="director_host_path_invalid",
+        )
+    digest = write_canonical_no_replace(args.output, request)
+    print(
+        "SCORE_DIRECTOR_HOST_REQUEST_OK "
+        f"run={request['run_id']} output={args.output.resolve()} sha256={digest} "
+        "model_calls=0 pass_eligible=false"
+    )
+    return 0
+
+
+def _handle_director_host_capture(args: argparse.Namespace) -> int:
+    request = validate_host_agent_request(
+        load_contract(args.request, expected_schema="score-director-host-request/v1")
+    )
+    frozen_evidence_root = Path(request["evidence_root"])
+    for label, candidate in (
+        ("host response", args.response.resolve(strict=False)),
+        ("host submission", args.output.resolve(strict=False)),
+    ):
+        if (
+            candidate == frozen_evidence_root
+            or frozen_evidence_root in candidate.parents
+        ):
+            raise BoundaryError(
+                f"{label} must be outside the fresh evidence_root",
+                code="director_host_path_invalid",
+            )
+    raw_response = _read_bounded_host_file(
+        args.response,
+        label="host response",
+        max_bytes=HOST_RESPONSE_CAPTURE_MAX_BYTES,
+        too_large_code="director_host_response_too_large",
+    )
+    submission = build_host_agent_submission(
+        request=request,
+        raw_response=raw_response,
+        submission_id=args.submission_id,
+        host_product=args.host_product,
+    )
+    digest = write_canonical_no_replace(args.output, submission)
+    print(
+        "SCORE_DIRECTOR_HOST_CAPTURE_OK "
+        f"run={submission['run_id']} output={args.output.resolve()} sha256={digest} "
+        "model_calls=0 pass_eligible=false"
+    )
+    return 0
+
+
+def _read_bounded_host_file(
+    path: Path,
+    *,
+    label: str,
+    max_bytes: int,
+    too_large_code: str,
+) -> bytes:
+    if path.is_symlink() or not path.is_file():
+        raise BoundaryError(f"{label} must be a regular non-symlink file: {path}")
+    if path.stat().st_size > max_bytes:
+        raise BoundaryError(
+            f"{label} exceeds the CLI read ceiling of {max_bytes} bytes: {path}",
+            code=too_large_code,
+        )
+    with path.open("rb") as reader:
+        data = reader.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise BoundaryError(
+            f"{label} exceeded the CLI read ceiling while being read: {path}",
+            code=too_large_code,
+        )
+    return data
+
+
+def _read_host_submission(path: Path) -> bytes:
+    return _read_bounded_host_file(
+        path,
+        label="host submission",
+        max_bytes=HOST_SUBMISSION_READ_MAX_BYTES,
+        too_large_code="host_submission_too_large",
+    )
+
+
+def _handle_director_host_ingest(args: argparse.Namespace) -> int:
+    request = validate_host_agent_request(
+        load_contract(args.request, expected_schema="score-director-host-request/v1")
+    )
+    raw_submission = _read_host_submission(args.submission)
+    adjudication = (
+        None
+        if args.adjudication is None
+        else load_contract(
+            args.adjudication,
+            expected_schema="score-director-adjudication/v1",
+        )
+    )
+    output = args.output
+    frozen_output = Path(request["evidence_root"]).resolve(strict=False)
+    if output.resolve(strict=False) != frozen_output:
+        raise BoundaryError(
+            "--output differs from the evidence_root bound by the host request",
+            code="director_evidence_root_mismatch",
+        )
+    claim_path = Path(request["ingest_claim_path"])
+    if claim_path.exists() or claim_path.is_symlink():
+        raise BoundaryError(
+            "the host request already has an ingest claim; redraw is forbidden",
+            code="director_host_ingest_already_claimed",
+        )
+    if output.exists():
+        raise BoundaryError(
+            f"host ingest output already exists: {output}",
+            code="destination_exists",
+        )
+    evidence = ingest_host_agent_submission(
+        request=request,
+        raw_submission=raw_submission,
+        adjudication=adjudication,
+        evidence_store=DirectorEvidenceStore(output),
+    )
+    conclusion = evidence.document["conclusion"]
+    print(
+        "SCORE_DIRECTOR_HOST_RESPONSE_RECORDED "
+        f"conclusion={conclusion} receipt={evidence.file.path.resolve()} "
+        f"receipt_sha256={evidence.file.sha256} model_calls=0 pass_eligible=false"
+    )
+    return 0 if conclusion in {
+        "diagnostic_contract_validated",
+        "diagnostic_adjudication_matched",
+    } else 2
 
 
 def _handle_director_phase_a_run(args: argparse.Namespace) -> int:
