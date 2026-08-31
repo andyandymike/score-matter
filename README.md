@@ -1,83 +1,44 @@
 # ScoreMatter
 
-Auditable AI-assisted BGM authoring for games, with local evidence and offline
-game delivery.
+Fast, local-first BGM generation for games.
 
 [![CI](https://github.com/andyandymike/score-matter/actions/workflows/ci.yml/badge.svg)](https://github.com/andyandymike/score-matter/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-ScoreMatter is an experimental authoring tool that places replaceable music
-providers behind typed requests, immutable artifacts, reproducible evidence,
-and explicit human review boundaries. A shipped game consumes ordinary audio
-and manifests; it does not require ScoreMatter, Python, a model, a network
-connection, or a GPU.
+ScoreMatter is a generation agent: describe what a scene needs, let the host
+agent turn that project context into a focused music direction, generate one
+local Stable Audio 3 candidate, and listen immediately. Your next natural-
+language instruction shapes the next attempt.
 
-ScoreMatter is model-agnostic. Its primary Director path captures the bare
-planning-response bytes produced by the user's current host agent, while local
-text models remain optional adapters. ScoreMatter preserves, validates,
-compiles, and records the untrusted response; it does not require a reasoning
-model in the repository core or in the shipped game.
+```text
+Project context -> Agent judgment -> one SA3 generation -> one WAV
+        ^                                                |
+        +--------------- listening feedback -------------+
+```
+
+Fast authoring is the default. Blind comparisons, capability experiments,
+immutable evidence, and replay tooling remain available for explicit research
+or audit work, but they never gate the first audible candidate.
 
 ## Status
 
-The M0 bootstrap evidence kernel is implemented. It remains experimental,
-pre-release software; the CI badge is the current cross-platform proof source.
+The top-level `generate` command invokes the machine-local Stable Audio 3
+Medium/SAME-L TFLite runtime exactly once. The default is a 20-second,
+44.1 kHz stereo PCM16 candidate using eight sampling steps and eight CPU
+threads. It runs offline, performs no hidden retry, and returns the WAV as soon
+as a cheap media-format check passes.
 
-The current public slice validates strict JSON contracts, computes RFC 8785/JCS
-digests, probes built-in providers, creates deterministic synthetic WAV
-fixtures, ingests bounded manual WAV input, stores immutable content-addressed
-artifacts, and replays their integrity evidence.
+The runtime and its roughly 9.34 GiB of model payload are intentionally not
+bundled or downloaded by the command. On the verified reference machine, a
+20-second candidate typically takes around one to two minutes and uses
+substantial system memory. See the
+[local SA3 guide](docs/sa3-local-evaluation.md) for the current installation
+boundary.
 
-Separately, the current reference machine has an ignored, machine-local Stable
-Audio 3 Medium/SAME-L CPU/TFLite installation. Earlier Small Music smoke runs
-showed only local operability and their artifacts were removed. A generic
-tracked pilot orchestrator can now execute an explicitly frozen private plan
-against exact installed files without registering SA3 as a provider or adding
-model dependencies to the core. The bounded Phase 1A run completed 18 of 18
-attempts on the reference machine; blind human listening and every capability,
-adoption, rights, release, and consumer-game decision remain pending. See the
-[SA3 local evaluation guide](docs/sa3-local-evaluation.md), historical
-[ADR 0002](docs/adr/0002-stable-audio-3-small-local-evaluation.md), and current
-[ADR 0003](docs/adr/0003-stable-audio-3-medium-capability-pilot.md).
-
-A separate bounded music-director kernel now provides strict planning
-contracts, immutable traces, deterministic compilation and adjudication, and
-fail-if-called audio/critic boundaries. The primary authoring posture is
-`host_agent_response_ingest`: ScoreMatter freezes the exact submitted Director
-packet together with a fresh evidence root and an out-of-root no-replace claim
-path, while the host returns only bare response bytes. A separate capture step
-base64-wraps those bytes without parsing them, so even malformed JSON can be
-retained. Ingest claims the request before parsing, preserves both the exact
-host submission and decoded raw response, then validates and compiles when
-possible. A failed ingest still consumes that request; it is evidence, not a
-redraw opportunity. The optional `local_jsonl_command` posture starts one
-ordinary local process for diagnostic work. Both postures are always
-capability-pass-ineligible. Host ingest writes only a diagnostic ingest receipt;
-it never emits a formal Phase A report or `planning_blocked`, and it does not run
-or replace formal P01-P08. The current local Phase A runner can conclude at most
-`planning_blocked`. Host ingest cannot prove the host's full model-visible
-context, model routing, tool use, call count, token use, cost, or hidden-fixture
-isolation; ordinary process invocation cannot prove OS network, filesystem,
-descendant-process, internal-inference, or hidden-file isolation.
-No formal Director evaluation plan is currently frozen or authorized, and no
-formal Phase A run has occurred. Validated drafts are advisory implementation
-evidence—not a claim that the agent can direct useful music. See the
-[Phase A guide](docs/music-director-phase-a.md) and
-[ADR 0004](docs/adr/0004-bounded-music-director-phase-a.md) together with
-[ADR 0005](docs/adr/0005-host-agent-response-ingest.md).
-
-It does **not** currently provide:
-
-- a tracked, bundled, managed, downloaded, or invoked real-model provider;
-- a capability-approved Director execution or response-ingest posture;
-- audio-quality, loop, vocal, key, BPM, or loudness approval;
-- creative or rights approval;
-- release packaging or Godot integration;
-- a claim that generated music is useful, original, seamless, or publishable.
-
-Read [the M0 public contract](docs/m0-contract.md) before relying on the tool.
-The authoring/runtime boundary is recorded in
-[ADR 0001](docs/adr/0001-offline-authoring-boundary.md).
+Every generated WAV is still a candidate. Successful generation does not
+prove that the music sounds good, loops cleanly, fits a game mix, contains no
+unwanted vocal-like sound, is original, is rights-cleared, or is ready to
+ship. Listening decides what happens next.
 
 ## Quick start
 
@@ -89,76 +50,90 @@ python -m venv .venv
 .venv\Scripts\score-matter --help
 ```
 
-Create and execute a tiny deterministic mock bundle:
+With the ignored SA3 runtime installed under
+`models/stable-audio-3/optimized/tflite`, generate one candidate:
 
 ```powershell
-.venv\Scripts\score-matter demo init .local/demo --provider mock
-.venv\Scripts\score-matter mock execute --bundle .local/demo --store .local
+.venv\Scripts\score-matter generate `
+  --prompt "Instrumental game BGM for a quiet star-map screen: spacious curiosity, warm restrained synths, clearly audible midrange on ordinary speakers, controlled upper mids, rounded transients, no vocals or heroic trailer hits." `
+  --seconds 20 `
+  --seed 2719 `
+  --out ".local\authoring\star-map-v1.wav"
 ```
 
-The execute command prints the exact run-receipt path. Replay it without
-regenerating audio:
+Omit `--out` to create a unique candidate path under `.local/authoring/`.
+Omit `--seed` to choose a random seed that is printed with the result. The
+command writes one small ignored record under ScoreMatter's
+`.local/authoring/records/` for recall, but that record does not create another
+workflow step or accompany a WAV exported elsewhere.
 
-```powershell
-.venv\Scripts\score-matter replay verify `
-  .local/runs/<run-id>/run-receipt.json --store .local
-```
+The normal iteration is deliberately short:
 
-Run the repository verification:
+1. Listen to the returned WAV.
+2. Say what should change: for example, “too quiet,” “upper mids are harsh,”
+   “less tragic,” or “leave more room for dialogue.”
+3. Generate one revised candidate.
+
+There is no automatic candidate pool, scoring phase, Plan approval, model
+rehash, normalization, loop construction, or game import in this path.
+
+## Local files and model safety
+
+Generated candidates and local records stay under ignored `.local/` paths.
+The persistent machine-local runtime and weights stay under ignored `models/`.
+Deleting `.local/` removes disposable output but must not remove the installed
+model; deleting `models/` does remove the runtime and weights.
+
+The command generates beside the destination under a unique temporary name,
+then publishes the checked WAV without replacing an existing file. Failed
+attempts do not leave a file that looks finished. It also forces the model
+libraries offline and fails quickly when required local components are absent.
+Set `SCORE_MATTER_SA3_ROOT` or pass `--runtime-root` only when the runtime lives
+somewhere else. Defaults stay anchored to this ScoreMatter checkout even when
+the command is launched from a consumer project.
+
+## Optional research and evidence tools
+
+The repository still contains the earlier dependency-light evidence kernel:
+strict contracts, deterministic mock audio, bounded manual ingest,
+content-addressed artifacts, and replay verification. It also retains the SA3
+boundary-pilot and music-director Phase A tooling as optional research lanes.
+They are not the ScoreMatter product loop and ordinary BGM generation does not
+require them.
+
+Run the repository verification with:
 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -v
-.venv\Scripts\python tools/audit_public_tree.py
+.venv\Scripts\python tools\audit_public_tree.py
 ```
 
-Generated runs, receipts, candidate audio, and private working material stay
-under ignored local paths. Optional machine-local model runtimes and weights
-belong under the separate ignored `models/` root; deleting `.local/` removes
-evidence but must not remove an installed model.
-
-## Design boundary
-
-```text
-Project context -> bound host request -> host Agent -> bare response bytes
-                -> byte-exact capture -> no-replace ingest claim
-                -> retained submission/raw response
-                -> ScoreMatter validation/evidence -> Brief/Plan drafts
-                -> independent human selection and review
-                -> resolved Request -> Provider
-                -> quarantined immutable Artifact
-                -> Run receipt -> replay verification
-```
-
-- Provider output is always a candidate.
-- A request/receipt records what ScoreMatter requested and observed; it does
-  not prove opaque provider internals.
-- Model, code, training-data, reference-audio, and output rights are separate.
-- ScoreMatter does not own game playback, music state transitions, or mixing.
-- SonicMatter remains a separate Foley project.
+For exact historical boundaries, see the [M0 public contract](docs/m0-contract.md),
+[SA3 local guide](docs/sa3-local-evaluation.md), and
+[Director Phase A research guide](docs/music-director-phase-a.md).
 
 ## Repository layout
 
-- `src/score_matter/` — the dependency-light M0 core and CLI.
-- `src/score_matter/schemas/` — strict versioned JSON Schemas.
-- `docs/` — stable public contracts and architecture decisions.
-- `tests/` — deterministic positive and negative evidence.
-- `tools/audit_public_tree.py` — tracked-tree privacy and artifact audit.
-- `tools/sa3_boundary_pilot.py` — generic external-pilot orchestration; exact
-  plans, prompts, model files, terms evidence, and results stay private.
-- `src/score_matter/director/` — bounded planning contracts, model-agnostic
-  host-response ingest, optional adapter boundary, deterministic
-  compiler/adjudicator, immutable evidence, and Phase A runner.
+- `src/score_matter/authoring.py` — single-attempt local SA3 generation.
+- `src/score_matter/` — CLI plus optional contracts and evidence tooling.
+- `docs/` — usage, model boundary, and architecture decisions.
+- `tests/` — deterministic tests that never load the real model in CI.
+- `tools/sa3_boundary_pilot.py` — optional capability-research orchestration.
 - `spec/` — private working material, intentionally excluded from Git.
-- `models/` — persistent machine-local provider source, environments, weights,
-  and caches, intentionally excluded.
-- `.local/` — generated candidates, receipts, and evaluation evidence,
-  intentionally excluded; cleanup loses evidence stored only there.
+- `models/` — persistent local source, environments, weights, and caches,
+  intentionally excluded.
+- `.local/` — generated candidates and disposable local records,
+  intentionally excluded.
+
+The shipped game consumes ordinary audio files. It does not need ScoreMatter,
+Python, a model, a network connection, or a GPU. SonicMatter remains a separate
+Foley project.
 
 ## Contributing
 
-This is a small personal open-source project. Narrow, evidence-backed changes
-inside the current M0 contract are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-before proposing a provider, model, audio asset, dependency, or release claim.
+This is a small personal open-source project. Keep changes narrow and make the
+first useful audio cheap to reach. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+before proposing a provider, model, dependency, audio asset, or release claim.
 
 ## License
 

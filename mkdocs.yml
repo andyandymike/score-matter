@@ -1,5 +1,5 @@
 site_name: ScoreMatter
-site_description: Auditable, local-first AI-assisted BGM authoring for games.
+site_description: Fast, local-first BGM generation for games.
 site_author: ScoreMatter contributors
 site_url: https://andyandymike.github.io/score-matter/
 site_dir: artifacts/site
@@ -46,15 +46,16 @@ theme:
 nav:
   - Home: README.md
   - Getting started: getting-started.md
-  - M0 contract: m0-contract.md
-  - SA3 local evaluation: sa3-local-evaluation.md
-  - Music director Phase A: music-director-phase-a.md
-  - Decisions:
-      - Offline authoring boundary: adr/0001-offline-authoring-boundary.md
-      - Stable Audio 3 local evaluation: adr/0002-stable-audio-3-small-local-evaluation.md
-      - Stable Audio 3 Medium capability pilot: adr/0003-stable-audio-3-medium-capability-pilot.md
-      - Bounded music director Phase A: adr/0004-bounded-music-director-phase-a.md
-      - Host-agent response ingest: adr/0005-host-agent-response-ingest.md
+  - Research and internals:
+      - SA3 local runtime and research: sa3-local-evaluation.md
+      - M0 evidence contract: m0-contract.md
+      - Music director Phase A: music-director-phase-a.md
+      - Decisions:
+          - Offline authoring boundary: adr/0001-offline-authoring-boundary.md
+          - Stable Audio 3 local evaluation: adr/0002-stable-audio-3-small-local-evaluation.md
+          - Stable Audio 3 Medium capability pilot: adr/0003-stable-audio-3-medium-capability-pilot.md
+          - Bounded music director Phase A: adr/0004-bounded-music-director-phase-a.md
+          - Host-agent response ingest: adr/0005-host-agent-response-ingest.md
 
 plugins:
   - search:

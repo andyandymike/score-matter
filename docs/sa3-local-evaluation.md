@@ -1,23 +1,51 @@
-# Stable Audio 3 local evaluation
+# Stable Audio 3 local runtime and research
 
-Status: machine-local evaluation only
-Last verified: 2026-08-29
-ScoreMatter provider status: not implemented
+Status: direct machine-local authoring implemented; research lanes optional
+Last verified: 2026-08-31
+ScoreMatter fast-generation status: implemented
+ScoreMatter evidence-provider status: not registered
 External capability-pilot orchestrator: implemented
 Private Phase 1A execution: 18/18 complete; blind human review pending
 
-ScoreMatter's tracked M0 core still makes zero real-model calls. Separately, a
-CPU/LiteRT installation of Stable Audio 3 Medium with the SAME-L codec is the
-current private capability-pilot target. A generic tracked tool can validate a
-private frozen plan, invoke the already-installed upstream CLI, and retain
-local evidence. It does not register a built-in provider, download or bundle a
-model, expose the private prompts, or establish musical, rights, adoption, or
-release approval.
+ScoreMatter's default authoring command now invokes a machine-local CPU/LiteRT
+installation of Stable Audio 3 Medium with the SAME-L codec. It launches one
+offline process, creates one candidate, performs a cheap WAV-format check, and
+returns the path for immediate listening. It does not register SA3 inside the
+older evidence-provider bundle, download or bundle a model, or establish
+musical, rights, adoption, or release approval.
+
+The frozen pilot, blind-review builder, manual ingest, and Director experiments
+described later on this page are optional research or audit tools. They are not
+steps in ordinary BGM generation.
 
 The historical Small Music smoke is recorded in
 [ADR 0002](adr/0002-stable-audio-3-small-local-evaluation.md). The Medium pilot
 decision is recorded separately in
 [ADR 0003](adr/0003-stable-audio-3-medium-capability-pilot.md).
+
+## Default fast-authoring command
+
+With this page's ignored runtime installed, generate one draft directly from
+the repository root:
+
+```powershell
+.venv\Scripts\score-matter generate `
+  --prompt "Instrumental game BGM, restrained psychological tension, clearly audible midrange on ordinary speakers, controlled upper mids, rounded transients, space for dialogue, no vocals or sharp metallic highs." `
+  --seconds 20 `
+  --seed 19 `
+  --out ".local\authoring\candidate-seed-19.wav"
+```
+
+The default is Medium + SAME-L + fp32, eight steps, eight CPU threads, CFG
+`1.0`, and no separate negative prompt. It makes exactly one attempt and never
+retries silently. Omit `--out` for a unique path under `.local/authoring/`.
+Omit `--seed` for a random seed that is reported after generation.
+
+The command records only a small ignored recall record under ScoreMatter's
+`.local/authoring/records/`; exporting a WAV elsewhere does not add a JSON file
+beside it. It does not hash the multi-gigabyte weights on every run, build an
+evaluation inventory, score the result, normalize it, make a loop, or import it
+into a game.
 
 ## Local directory boundary
 
@@ -240,11 +268,13 @@ that exposed this loop-condition marker is retained and marked unsuitable for
 first-stage review rather than overwritten. No capability state is assigned
 while listening is pending.
 
-## Generate an ad-hoc evaluation candidate
+## Advanced: invoke the upstream CLI directly
 
-Always provide an absolute output path under the repository-root `.local/`.
-Otherwise the upstream CLI places a relative output inside its own source
-checkout, mixing disposable audio with the persistent runtime.
+Ordinary authoring should use `score-matter generate`. Direct upstream access
+is retained for experiments with runtime options that the fast path does not
+expose. Always provide an absolute output path under the repository-root
+`.local/`; otherwise the upstream CLI places relative output inside its own
+source checkout, mixing disposable audio with the persistent runtime.
 
 ```powershell
 $scoreRoot = (Get-Location).Path
@@ -304,10 +334,11 @@ Those risks must remain listening and analysis gates. A successful process,
 valid WAV, or pleasing single excerpt does not prove good BGM, a clean loop,
 vocal absence, mix compatibility, creative approval, or release readiness.
 
-## Bring a candidate into ScoreMatter
+## Optional: ingest a candidate into the evidence kernel
 
-Until an SA3 process adapter exists, the only honest bridge is the built-in
-`manual` provider:
+The fast path already generates through ScoreMatter. If a separate experiment
+needs content-addressed storage and a replay receipt, the older built-in
+`manual` provider can additionally ingest that WAV:
 
 1. Generate the WAV into `.local/sa3-evaluation/`.
 2. Construct and review a manual-provider bundle whose output contract matches
@@ -346,7 +377,8 @@ $bundle = ".local\jh-inquiry-manual-bundle" # reviewed bundle; not demo init out
   --store .local
 ```
 
-The external generation record referenced above must independently retain the
+For a formal research claim, the external generation record referenced above
+must independently retain the
 exact positive and negative prompts, CFG/APG, seed, duration, step and thread
 counts, precision, component revisions and hashes, host/runtime facts, elapsed
 time, output SHA-256, byte count, and upstream stdout/stderr. Manual ingestion
@@ -355,28 +387,30 @@ and keeps rights unapproved.
 
 ## Judgement Horror handoff boundary
 
-The current truthful dogfood path is:
+The default dogfood path is now:
 
 ```text
-Judgement Horror inquiry constraints
-  -> external SA3 CLI candidate in ScoreMatter .local/
-  -> ScoreMatter manual source record + ingest
-  -> ScoreMatter replay byte verification
-  -> separate listening, loop, mix, creative, and rights review
+Judgement Horror scene specification and runtime constraints
+  -> host Agent makes one music-direction judgment
+  -> score-matter generate creates one ignored local WAV
+  -> immediate human listening and natural-language feedback
+  -> optional project-owned loop, mix, import, and playback work
 ```
 
-It is not `Judgement Horror -> ScoreMatter SA3 provider`, because no such
-provider exists. Keep the candidate in ScoreMatter's ignored evaluation lane
-until the consumer project has an exact ignored staging path and export
-exclusion. Do not copy it into game assets merely because manual replay passes.
+This uses the lightweight authoring adapter, not the registered evidence-
+provider bundle. Keep exploratory candidates in ScoreMatter's ignored local
+lane until the consumer project chooses an exact staging/import path and export
+policy. Do not copy a candidate into release assets merely because its process
+and WAV checks pass.
 
-There is also an unresolved contract mismatch: ScoreMatter Brief v1 requires
+The optional evidence kernel still has an unresolved contract mismatch:
+ScoreMatter Brief v1 requires
 specific BPM, key, and meter values, while a horror cue may intentionally be
-beatless or leave those fields unknown. Do not invent musical facts to satisfy
-the current schema. Resolve that M1 schema gap before claiming that the
-Judgement Horror brief was losslessly compiled.
+beatless or leave those fields unknown. That does not block fast generation.
+Do not invent musical facts merely to ingest the result into the optional
+contract path.
 
-## Work still required for a real provider
+## Work still required for a registered evidence provider
 
 - a versioned out-of-process SA3 adapter and frozen provider descriptor;
 - timeout, cancellation, failure-receipt, environment, revision, and hardware
@@ -388,5 +422,6 @@ Judgement Horror brief was losslessly compiled.
 - an evaluation package whose evidence survives cleanup;
 - consumer-project packaging and playback acceptance, owned by that project.
 
-Until those items are implemented and reviewed, SA3 remains an external local
-evaluation runtime, not ScoreMatter production capacity.
+Those items are not prerequisites for ordinary local generation. They are
+required only before claiming that SA3 participates in the stricter provider,
+evidence, or release pipeline.

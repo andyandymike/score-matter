@@ -1,5 +1,10 @@
 # Host-agent Director and bounded Phase A
 
+!!! warning "Optional research lane"
+    This page documents contract and capability research. It is not the BGM
+    generation quick path and never gates ordinary authoring. Use
+    `score-matter generate` when the goal is to hear a candidate.
+
 ScoreMatter includes a dependency-light, model-agnostic planning kernel. Its
 primary authoring path captures the bare response bytes produced by the user's
 current host agent, then imports them through an evidence-bound submission;

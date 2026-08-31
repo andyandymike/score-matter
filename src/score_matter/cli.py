@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
+from .authoring import SA3GenerationSettings, generate_sa3_wav
 from .bundle import load_execution_bundle
 from .canonical import canonical_sha256, file_sha256, write_canonical_no_replace
 from .contracts import load_contract, validate_document
@@ -40,10 +41,37 @@ HOST_SUBMISSION_READ_MAX_BYTES = 16 * 1024 * 1024
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="score-matter",
-        description="Auditable, model-agnostic BGM authoring evidence core.",
+        description="Fast, local-first BGM generation for games.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    generate_parser = commands.add_parser(
+        "generate",
+        help="Generate one local SA3 BGM candidate for immediate listening.",
+    )
+    generate_parser.add_argument("--prompt", required=True)
+    generate_parser.add_argument("--out", type=Path)
+    generate_parser.add_argument(
+        "--output-root",
+        type=Path,
+        help="Override the ScoreMatter-local root used when --out is omitted.",
+    )
+    generate_parser.add_argument("--seconds", type=int, default=20)
+    generate_parser.add_argument("--seed", type=int)
+    generate_parser.add_argument("--steps", type=int, default=8)
+    generate_parser.add_argument("--threads", type=int, default=8)
+    generate_parser.add_argument("--cfg", type=float, default=1.0)
+    generate_parser.add_argument("--apg", type=float)
+    generate_parser.add_argument("--negative-prompt")
+    generate_parser.add_argument(
+        "--play",
+        action="store_true",
+        help="Ask the local SA3 runtime to play the result after generation.",
+    )
+    generate_parser.add_argument("--runtime-root", type=Path)
+    generate_parser.add_argument("--timeout-seconds", type=int, default=600)
+    generate_parser.set_defaults(handler=_handle_generate)
 
     validate_parser = commands.add_parser("validate", help="Validate a strict contract document.")
     validate_parser.add_argument("document", type=Path)
@@ -198,6 +226,41 @@ def _add_director_phase_a_inputs(parser: argparse.ArgumentParser) -> None:
 
 def _print_json(document: dict[str, Any]) -> None:
     print(json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def _handle_generate(args: argparse.Namespace) -> int:
+    settings = SA3GenerationSettings(
+        seconds=args.seconds,
+        seed=args.seed,
+        steps=args.steps,
+        threads=args.threads,
+        cfg=args.cfg,
+        apg=args.apg,
+        negative_prompt=args.negative_prompt,
+        play=args.play,
+        timeout_seconds=args.timeout_seconds,
+    )
+    print(
+        "SCORE_GENERATE_START candidates=1 automatic_retries=0 "
+        f"seconds={settings.seconds}",
+        flush=True,
+    )
+    result = generate_sa3_wav(
+        args.prompt,
+        settings=settings,
+        output=args.out,
+        output_root=args.output_root,
+        runtime_root=args.runtime_root,
+    )
+    if result.record_warning is not None:
+        print(f"SCORE_GENERATE_WARNING message={result.record_warning}", file=sys.stderr)
+    print(
+        "SCORE_GENERATE_OK "
+        f"path={result.path} sha256={result.sha256} seed={result.seed} "
+        f"seconds={result.seconds} wall_seconds={result.wall_seconds:.2f} "
+        "attempts=1 automatic_retries=0"
+    )
+    return 0
 
 
 def _handle_validate(args: argparse.Namespace) -> int:

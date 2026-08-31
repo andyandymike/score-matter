@@ -9,11 +9,60 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import call, patch
 
+from score_matter.authoring import SA3GenerationResult
 from score_matter.cli import main
 from score_matter.errors import DirectorError
 
 
 class CliTests(unittest.TestCase):
+    def test_generate_cli_is_one_candidate_with_no_automatic_retry(self) -> None:
+        candidate = Path("C:/local/score-matter/candidate.wav")
+        generation = SA3GenerationResult(
+            path=candidate,
+            record_path=candidate.with_suffix(".generation.json"),
+            record_warning=None,
+            seed=2719,
+            seconds=20,
+            wall_seconds=53.25,
+            media={
+                "codec": "pcm_s16le",
+                "sample_rate_hz": 44100,
+                "channels": 2,
+                "frame_count": 882000,
+            },
+            sha256="sha256:" + "a" * 64,
+        )
+        output = io.StringIO()
+        with (
+            patch(
+                "score_matter.cli.generate_sa3_wav", return_value=generation
+            ) as generate_mock,
+            redirect_stdout(output),
+        ):
+            result = main(
+                [
+                    "generate",
+                    "--prompt",
+                    "Quiet star-map BGM",
+                    "--seed",
+                    "2719",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        self.assertIn(
+            "SCORE_GENERATE_START candidates=1 automatic_retries=0 seconds=20",
+            output.getvalue(),
+        )
+        self.assertIn(f"SCORE_GENERATE_OK path={candidate}", output.getvalue())
+        self.assertIn("attempts=1 automatic_retries=0", output.getvalue())
+        generate_mock.assert_called_once()
+        settings = generate_mock.call_args.kwargs["settings"]
+        self.assertEqual(settings.seed, 2719)
+        self.assertEqual(settings.steps, 8)
+        self.assertEqual(settings.threads, 8)
+        self.assertEqual(settings.cfg, 1.0)
+
     def test_director_kernel_digest_has_stable_no_call_sentinel(self) -> None:
         output = io.StringIO()
         with redirect_stdout(output):

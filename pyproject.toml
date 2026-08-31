@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "score-matter"
 version = "0.1.0.dev0"
-description = "Auditable, model-agnostic AI-assisted BGM authoring for games."
+description = "Fast, local-first BGM generation for games."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
