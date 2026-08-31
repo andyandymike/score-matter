@@ -92,5 +92,6 @@ excluded claims.
 
 For the optional real-model research lane, read the
 [Stable Audio 3 local evaluation guide](sa3-local-evaluation.md). It describes
-an isolated machine-local runtime and manual-ingest bridge; it does not add a
-model call to this M0 path or register another built-in provider.
+an isolated machine-local runtime, a generic private-pilot orchestrator, and a
+manual-ingest bridge. The pilot is outside this M0 path and does not register
+another built-in provider or add model dependencies to the core.

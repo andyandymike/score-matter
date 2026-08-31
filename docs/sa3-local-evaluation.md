@@ -1,17 +1,23 @@
 # Stable Audio 3 local evaluation
 
-Status: machine-local evaluation only  
-Last verified: 2026-08-25  
+Status: machine-local evaluation only
+Last verified: 2026-08-29
 ScoreMatter provider status: not implemented
+External capability-pilot orchestrator: implemented
+Private Phase 1A execution: 18/18 complete; blind human review pending
 
 ScoreMatter's tracked M0 core still makes zero real-model calls. Separately, a
-CPU/LiteRT installation of Stable Audio 3 Small Music (`sm-music`) is the
-current real-model evaluation candidate. It can create WAV candidates for
-listening and later manual ingestion, but it is not a built-in provider, a
-default model, or evidence of musical, rights, or release approval.
+CPU/LiteRT installation of Stable Audio 3 Medium with the SAME-L codec is the
+current private capability-pilot target. A generic tracked tool can validate a
+private frozen plan, invoke the already-installed upstream CLI, and retain
+local evidence. It does not register a built-in provider, download or bundle a
+model, expose the private prompts, or establish musical, rights, adoption, or
+release approval.
 
-The selection boundary is recorded in
-[ADR 0002](adr/0002-stable-audio-3-small-local-evaluation.md).
+The historical Small Music smoke is recorded in
+[ADR 0002](adr/0002-stable-audio-3-small-local-evaluation.md). The Medium pilot
+decision is recorded separately in
+[ADR 0003](adr/0003-stable-audio-3-medium-capability-pilot.md).
 
 ## Local directory boundary
 
@@ -33,38 +39,54 @@ On the current reference machine the installation is:
 | Component | Frozen local value |
 | --- | --- |
 | Source checkout | `models/stable-audio-3` at `a0b57f5483c4588f827f3552b7d5c6ca2a9687be` |
-| Optimized-weight snapshot | `2204d5086475bd5b7e6e2bd720772dd8e8160513` |
+| Moving optimized-weight ref observed | `eb343c94397c3de81f98f6e0eb75f08f183c020b`; informational only |
 | Hugging Face cache | `models/huggingface-cache` |
 | Runtime | Python 3.12.10; LiteRT `ai-edge-litert` 2.2.0 |
-| Installed bundle | `sm-music`, SAME-S codec, T5Gemma text encoder |
-| TFLite payload | 4 files; 2,836,149,512 bytes (about 2.641 GiB) |
+| Installed bundle | `medium`, SAME-L encoder/decoder, T5Gemma text encoder |
+| TFLite plus tokenizer payload | 5 files; 10,032,146,459 bytes (about 9.34 GiB) |
+| Not installed | `sm-music`, `sm-sfx`, alternate precisions, LoRA adapters |
 
 These values describe this checkout; they are not a promise that an upstream
 branch, package index, or model repository will remain unchanged.
 
-The locally resolved files were hashed on 2026-08-25:
+The locally resolved pilot files were hashed on 2026-08-28:
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
 | `tokenizer.model` | 4,241,003 | `61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2` |
-| `sa3-sm-music/dit_fp32.tflite` | 1,838,758,544 | `d388700a2ca439c11e9a53506e964e93231386a2beb8173c6eec6d95f676ce09` |
-| `same-s/dec_fp32.tflite` | 218,377,156 | `cd87fa6686b24a56dc3497e05fbb26a34cf9604afe49c6631e829c9e70fccf21` |
-| `same-s/enc_fp32.tflite` | 215,195,204 | `35ce38ea9f56e116036c683e37bf96c954d4fe0a435606ded0f62595b91f52a3` |
+| `sa3-m/dit_fp32.tflite` | 5,816,313,104 | `b811dc7d0135ca48afbc7a7bb7d19bdaaad13cbcb592418b8aa169e0c149daba` |
+| `same-l/dec_fp32.tflite` | 1,823,900,848 | `3af34d35939ce6fc74d9f7b9d9bd6b99bc9568b614bcfe57da4a781bf40c8c6c` |
+| `same-l/enc_fp32.tflite` | 1,823,872,896 | `f8b5e95a7073e3b59e4a1c2b07836d86d514cc7eaaff05b3c7cbdd1620f141d5` |
 | `t5gemma/encoder_fp16.tflite` | 563,818,608 | `8530d0b3e6b9b9dcf1239145c2a853fb749708eaddbb472ff8f0802b50059372` |
 
-The SAME-S encoder is installed for audio-to-audio/inpainting; the initial
-text-to-audio lane uses the tokenizer, T5Gemma encoder, Small Music DiT, and
-SAME-S decoder.
+Text-to-audio uses the tokenizer, T5Gemma encoder, Medium DiT, and SAME-L
+decoder. Audio-to-audio and inpainting additionally use the SAME-L encoder.
+The model and cache paths are hardlinked on the current machine, so summing
+both logical trees would overstate physical storage.
+
+### Historical Small Music record
+
+The 2026-08-25 Small Music/SAME-S installation totalled 2,836,149,512 bytes.
+Its optimized snapshot was
+`2204d5086475bd5b7e6e2bd720772dd8e8160513`. The Small DiT hash was
+`d388700a2ca439c11e9a53506e964e93231386a2beb8173c6eec6d95f676ce09`;
+the SAME-S decoder and encoder hashes were
+`cd87fa6686b24a56dc3497e05fbb26a34cf9604afe49c6631e829c9e70fccf21`
+and `35ce38ea9f56e116036c683e37bf96c954d4fe0a435606ded0f62595b91f52a3`.
+Those files are not currently installed. Historical smoke measurements below
+must not be presented as current Medium performance.
 
 ## Terms preflight
 
-Before downloading or running the model, the operator must review the exact
-terms that apply to the intended action, including the
+Before downloading or running the model, the operator must review and retain
+the exact terms that apply to the intended action, including the
 [Stability AI Community License](https://stability.ai/community-license-agreement),
 [Acceptable Use Policy](https://stability.ai/use-policy), and the bundled
-[Gemma terms](https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/2204d5086475bd5b7e6e2bd720772dd8e8160513/LICENSE_GEMMA.md).
-The optimized model repository also carries its own
-[license file](https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/2204d5086475bd5b7e6e2bd720772dd8e8160513/LICENSE.md).
+[Gemma terms](https://ai.google.dev/gemma/terms). The gated
+[Medium model card](https://huggingface.co/stabilityai/stable-audio-3-medium)
+states that the model uses the Stability AI Community License and redistributes
+T5Gemma under the Gemma terms. The frozen source checkout carries an MIT code
+license; that code license does not license the model files.
 
 Repository MIT licensing does not cover the provider, weights, inputs, or
 outputs. Access to a download and a successful generation are not commercial,
@@ -87,10 +109,11 @@ Push-Location models/stable-audio-3/optimized/tflite
 Pop-Location
 ```
 
-The download may require the operator to authenticate and accept upstream
-gated-model terms. After installation, record the resolved Hugging Face
-snapshot rather than treating the moving `main` ref as frozen. The currently
-verified snapshot is listed above.
+The command above recreates the historical Small Music route, not the current
+Medium pilot. Any new download may require authentication and acceptance of
+upstream gated-model terms. Record exact downloaded file hashes and the
+resolved Hugging Face revision rather than treating moving `main` as frozen.
+Do not use lazy download during an experiment.
 
 Verify the isolated CLI without generating audio:
 
@@ -98,7 +121,126 @@ Verify the isolated CLI without generating audio:
 cmd /c models\stable-audio-3\optimized\tflite\sa3.bat --help
 ```
 
-## Generate an evaluation candidate
+## Run a frozen private capability pilot
+
+`tools/sa3_boundary_pilot.py` contains no prompts or model dependencies. It
+requires an ignored private plan that contains exact prompts, attempts,
+component hashes, terms-snapshot hashes, offline settings, and review
+parameters.
+
+Validate and preflight the plan without generating audio:
+
+```powershell
+.venv\Scripts\python tools\sa3_boundary_pilot.py validate `
+  --plan spec\001-m1-capability-boundary-experiment.plan.json
+.venv\Scripts\python tools\sa3_boundary_pilot.py preflight `
+  --plan spec\001-m1-capability-boundary-experiment.plan.json
+```
+
+Run only the separately authorized calibration attempt:
+
+```powershell
+.venv\Scripts\python tools\sa3_boundary_pilot.py run `
+  --plan spec\001-m1-capability-boundary-experiment.plan.json `
+  --attempt cal-001
+```
+
+After the calibration satisfies the frozen media and 300-second wall-time
+gate, run only the authorized Phase 1A inventory. `--resume` skips immutable
+final attempts but does not replace or retry them:
+
+```powershell
+.venv\Scripts\python tools\sa3_boundary_pilot.py run-phase `
+  --plan spec\001-m1-capability-boundary-experiment.plan.json `
+  --phase phase1a --resume
+```
+
+The frozen pilot does not authorize Phase 1B. The orchestrator rejects that
+phase, including a direct attempt invocation, until a later reviewed plan and
+explicit authority exist.
+
+The orchestrator writes the command, stdout/stderr, timings, component and
+terms bindings, raw WAV, media analysis, status, and generation record under
+`.local/experiments/<experiment-id>/`. It fails closed on a non-frozen plan,
+hash drift, unreviewed local-evaluation terms, low disk, an unsafe output path,
+or a missing preflight. Offline Hugging Face flags turn a missing component
+into a failure rather than a download.
+
+The optional review command creates hash-bound blind copies using the frozen
+linear PCM16 RMS/sample-peak transform. That is not LUFS or true-peak
+normalization, and the raw WAV remains unchanged.
+
+Close editing evidence and build the complete Phase 1A review inventory with:
+
+```powershell
+"E01", "E02", "E03" | ForEach-Object {
+  .venv\Scripts\python tools\sa3_boundary_pilot.py analyze-edit `
+    --plan spec\001-m1-capability-boundary-experiment.plan.json `
+    --attempt $_
+}
+
+$reviewArgs = @(
+  "prepare-review", "--plan",
+  "spec\001-m1-capability-boundary-experiment.plan.json"
+)
+"B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B09",
+"B10", "B11", "B12", "N01", "N02", "N03", "E01", "E02", "E03" |
+  ForEach-Object { $reviewArgs += @("--attempt", $_) }
+& .venv\Scripts\python.exe tools\sa3_boundary_pilot.py @reviewArgs
+
+.venv\Scripts\python tools\sa3_boundary_pilot.py stage-review `
+  --plan spec\001-m1-capability-boundary-experiment.plan.json
+
+.venv\Scripts\python tools\sa3_boundary_pilot.py summarize-phase1a `
+  --plan spec\001-m1-capability-boundary-experiment.plan.json
+```
+
+The review builder fails if the phase is still open, an attempt is omitted, a
+candidate hash no longer matches, or an editing probe lacks its parent/child
+analysis. Outputs are immutable; the commands are not an overwrite mechanism.
+
+### Current bounded result
+
+The 2026-08-29 reference-host run closed all 18 Phase 1A outcomes without a
+process, dependency, timeout, or hard-media failure. This is execution evidence,
+not a musical pass:
+
+| Observation | Result |
+| --- | ---: |
+| Phase 1A attempt denominator | 18 complete, 0 non-complete |
+| Total Phase 1A wall time | 1,207.74 seconds (20.13 minutes) |
+| Per-attempt wall time | 53.28 seconds minimum; 55.90 median; 157.20 maximum |
+| Sampled process-tree working set | 12.47 GiB median; 21.41 GiB maximum |
+| Experiment evidence after blind-copy preparation | 223.07 MiB; below the frozen 512 MiB budget |
+| Human review | pending |
+
+The first calibration's original Windows memory field captured only the
+virtual-environment launcher and is marked `invalid_do_not_use` by an immutable
+correction. A byte-identical B01 repeat using the same frozen prompt, seed, and
+model files recorded the corrected whole-process-tree value. This repeat is
+useful local evidence, not a promise of cross-machine determinism.
+
+Four Phase 1A files contained a small number of full-scale PCM16 samples: B01
+(39), N01 (62), N02 (168), and N03 (82). They passed the hard media contract but
+retain a clipping-risk advisory. Automatic format checks do not approve their
+sound.
+
+Editing produced complete files, but it did not preserve the nominally
+unchanged PCM region bit-for-bit. E02 changed about 92.6% of outside-region
+samples with an outside difference RMS near -47.45 dBFS; E03 changed about
+98.5% with an outside difference RMS near -49.95 dBFS. These low-level changes
+and the recorded boundary jumps still require parent/child listening.
+
+The private blind package contains all 18 anonymous raw and RMS-matched copies,
+a reveal commitment, and an unfilled human-review draft. First-stage listening
+uses `review/sound-quality-manifest.json`, which contains no attempt, family,
+seed, prompt, or loop-condition marker. A separate manifest exposes the one
+eight-repeat raw preview only after sound-quality scoring. The original manifest
+that exposed this loop-condition marker is retained and marked unsuitable for
+first-stage review rather than overwritten. No capability state is assigned
+while listening is pending.
+
+## Generate an ad-hoc evaluation candidate
 
 Always provide an absolute output path under the repository-root `.local/`.
 Otherwise the upstream CLI places a relative output inside its own source
@@ -114,8 +256,8 @@ Push-Location models/stable-audio-3/optimized/tflite
 .\sa3.ps1 `
   --prompt "dark restrained psychological horror underscore, audible midrange, no vocals" `
   --negative-prompt "piercing whistle, harsh resonance, vocals, speech" `
-  --dit sm-music --decoder same-s --precision fp32 `
-  --seconds 60 --steps 8 --seed 19 --cfg 3.0 --out $candidate
+  --dit medium --decoder same-l --precision fp32 `
+  --seconds 20 --steps 8 --seed 19 --cfg 3.0 --out $candidate
 Pop-Location
 ```
 
@@ -133,7 +275,7 @@ when converting to 16-bit samples. A future adapter must record the pre-write
 peak and any declared constant-gain derivative. It must not silently normalize,
 compress, limit, or overwrite the raw artifact.
 
-## What the exploratory smoke established
+## What the historical Small Music smoke established
 
 The following observations came from a bounded local exploration on an Intel
 Core i7-10875H machine with about 23.5 GiB available RAM. The RTX 2060 6 GiB

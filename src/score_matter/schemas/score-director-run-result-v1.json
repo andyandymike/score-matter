@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-run-result-v1.json",
+  "title": "ScoreMatter Director Run Result v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "run_result_id",
+    "run_id",
+    "scenario_id",
+    "run_kind",
+    "repeat_of",
+    "spec_sha256",
+    "evaluation_plan_sha256",
+    "phase_authorization_sha256",
+    "context_sha256",
+    "adjudication_sha256",
+    "request_sha256",
+    "trace_sha256",
+    "raw_response_sha256",
+    "agent_response_sha256",
+    "gap_report_sha256",
+    "direction_set_sha256",
+    "brief_draft_sha256",
+    "plan_draft_sha256",
+    "terminal_state",
+    "outcome",
+    "stub_counters",
+    "critical_hallucinations",
+    "authority_escalations",
+    "forbidden_claims",
+    "validation",
+    "metrics",
+    "retained",
+    "reported_at"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-run-result/v1" },
+    "run_result_id": { "$ref": "#/$defs/id" },
+    "run_id": { "$ref": "#/$defs/id" },
+    "scenario_id": { "$ref": "#/$defs/scenario_id" },
+    "run_kind": { "enum": ["primary", "repeat"] },
+    "repeat_of": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }]
+    },
+    "spec_sha256": { "$ref": "#/$defs/sha256" },
+    "evaluation_plan_sha256": { "$ref": "#/$defs/sha256" },
+    "phase_authorization_sha256": { "$ref": "#/$defs/sha256" },
+    "context_sha256": { "$ref": "#/$defs/sha256" },
+    "adjudication_sha256": { "$ref": "#/$defs/sha256" },
+    "request_sha256": { "$ref": "#/$defs/sha256" },
+    "trace_sha256": { "$ref": "#/$defs/sha256" },
+    "raw_response_sha256": { "$ref": "#/$defs/sha256" },
+    "agent_response_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "gap_report_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "direction_set_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "brief_draft_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "plan_draft_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "terminal_state": {
+      "enum": [
+        "ready",
+        "clarification_required",
+        "abstain",
+        "safety_rejected",
+        "malformed_response",
+        "model_refusal",
+        "timeout",
+        "validator_rejected",
+        "authority_escalation",
+        "aborted"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "valid_ready",
+        "valid_stop",
+        "malformed_response",
+        "model_refusal",
+        "timeout",
+        "validator_rejected",
+        "authority_escalation",
+        "aborted"
+      ]
+    },
+    "stub_counters": { "$ref": "#/$defs/stub_counters" },
+    "critical_hallucinations": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "authority_escalations": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "forbidden_claims": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "validation": {
+      "type": "object",
+      "required": [
+        "context_hash_matched",
+        "schema_valid",
+        "semantic_valid",
+        "expected_stop_matched",
+        "required_constraints_preserved",
+        "route_state_matched",
+        "direction_diversity_verified"
+      ],
+      "properties": {
+        "context_hash_matched": { "type": "boolean" },
+        "schema_valid": { "type": "boolean" },
+        "semantic_valid": { "type": "boolean" },
+        "expected_stop_matched": { "type": "boolean" },
+        "required_constraints_preserved": { "$ref": "#/$defs/nullable_boolean" },
+        "route_state_matched": { "$ref": "#/$defs/nullable_boolean" },
+        "direction_diversity_verified": { "$ref": "#/$defs/nullable_boolean" }
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "missing_field_recall",
+        "missing_field_precision",
+        "direction_axis_difference_count",
+        "brief_plan_complete",
+        "route_correct",
+        "stop_correct",
+        "model_call_count",
+        "elapsed_ms",
+        "input_tokens",
+        "output_tokens",
+        "external_cost_usd"
+      ],
+      "properties": {
+        "missing_field_recall": { "$ref": "#/$defs/nullable_ratio" },
+        "missing_field_precision": { "$ref": "#/$defs/nullable_ratio" },
+        "direction_axis_difference_count": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0, "maximum": 10 }
+          ]
+        },
+        "brief_plan_complete": { "type": "boolean" },
+        "route_correct": { "$ref": "#/$defs/nullable_boolean" },
+        "stop_correct": { "type": "boolean" },
+        "model_call_count": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "elapsed_ms": { "type": "integer", "minimum": 0, "maximum": 86400000 },
+        "input_tokens": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "output_tokens": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "external_cost_usd": { "type": "number", "minimum": 0, "maximum": 1000000 }
+      },
+      "additionalProperties": false
+    },
+    "retained": { "const": true },
+    "reported_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullable_sha256": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }]
+    },
+    "nullable_boolean": {
+      "oneOf": [{ "type": "null" }, { "type": "boolean" }]
+    },
+    "nullable_ratio": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "scenario_id": {
+      "enum": [
+        "p01",
+        "p02",
+        "p03",
+        "p04",
+        "p05",
+        "p06",
+        "p07",
+        "p08",
+        "m01",
+        "m02",
+        "x01",
+        "x02",
+        "s01",
+        "s02"
+      ]
+    },
+    "stub_counters": {
+      "type": "object",
+      "required": ["generator_calls", "critic_calls", "reference_audio_calls"],
+      "properties": {
+        "generator_calls": { "type": "integer", "minimum": 0, "maximum": 128 },
+        "critic_calls": { "type": "integer", "minimum": 0, "maximum": 128 },
+        "reference_audio_calls": { "type": "integer", "minimum": 0, "maximum": 128 }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": ["finding_id", "evidence", "rationale"],
+      "properties": {
+        "finding_id": { "$ref": "#/$defs/id" },
+        "evidence": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

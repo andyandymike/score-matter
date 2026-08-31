@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-phase-authorization-v1.json",
+  "title": "ScoreMatter Director Phase Authorization v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "authorization_id",
+    "evaluation_plan_sha256",
+    "phase",
+    "decision",
+    "authorized_by",
+    "trust_level",
+    "authorized_at",
+    "expires_at",
+    "note"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-phase-authorization/v1" },
+    "authorization_id": { "$ref": "#/$defs/id" },
+    "evaluation_plan_sha256": { "$ref": "#/$defs/sha256" },
+    "phase": { "const": "phase_a" },
+    "decision": { "enum": ["allow", "deny", "revoked"] },
+    "authorized_by": { "$ref": "#/$defs/id" },
+    "trust_level": { "enum": ["fixture", "local_acknowledgement"] },
+    "authorized_at": { "$ref": "#/$defs/timestamp" },
+    "expires_at": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/timestamp" }]
+    },
+    "note": { "type": "string", "minLength": 1, "maxLength": 2048 }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    }
+  }
+}

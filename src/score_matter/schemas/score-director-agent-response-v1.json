@@ -1,0 +1,543 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-agent-response-v1.json",
+  "title": "ScoreMatter Director Agent Response v1",
+  "description": "Untrusted model payload. Authority-bearing envelopes and digests are added by deterministic code.",
+  "type": "object",
+  "required": [
+    "schema",
+    "context_sha256",
+    "terminal_state",
+    "classifications",
+    "questions",
+    "clarification_round",
+    "stop_reasons",
+    "direction_payload",
+    "brief_payload",
+    "plan_payload",
+    "route"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-agent-response/v1" },
+    "context_sha256": { "$ref": "#/$defs/sha256" },
+    "terminal_state": { "$ref": "#/$defs/terminal_state" },
+    "classifications": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/classification" }
+    },
+    "questions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/question" }
+    },
+    "clarification_round": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "stop_reasons": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "direction_payload": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/direction_payload" }
+      ]
+    },
+    "brief_payload": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/brief_payload" }
+      ]
+    },
+    "plan_payload": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/plan_payload" }
+      ]
+    },
+    "route": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/route" }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "field_path": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){0,15}$",
+      "maxLength": 256
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "terminal_state": {
+      "enum": ["ready", "clarification_required", "abstain", "safety_rejected"]
+    },
+    "classification": {
+      "type": "object",
+      "required": ["material_input_id", "classification", "statement", "rationale"],
+      "properties": {
+        "material_input_id": { "$ref": "#/$defs/id" },
+        "classification": {
+          "enum": [
+            "explicit_fact",
+            "required_constraint",
+            "preferred_constraint",
+            "assumption_proposed_for_review",
+            "unknown_blocking",
+            "unknown_non_blocking",
+            "conflict"
+          ]
+        },
+        "statement": { "$ref": "#/$defs/text" },
+        "rationale": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "question": {
+      "type": "object",
+      "required": ["question_id", "material_input_ids", "text", "why_material"],
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "material_input_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "why_material": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "additionalProperties": false
+    },
+    "shared_invariant": {
+      "type": "object",
+      "required": ["invariant_id", "statement", "enforcement"],
+      "properties": {
+        "invariant_id": { "$ref": "#/$defs/id" },
+        "statement": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "enforcement": { "enum": ["required", "preferred"] }
+      },
+      "additionalProperties": false
+    },
+    "axes": {
+      "type": "object",
+      "required": [
+        "palette",
+        "register",
+        "density",
+        "articulation",
+        "harmony",
+        "rhythm",
+        "energy",
+        "foreground_occupancy",
+        "entry_exit",
+        "loop_behaviour"
+      ],
+      "properties": {
+        "palette": { "$ref": "#/$defs/text" },
+        "register": { "$ref": "#/$defs/text" },
+        "density": { "$ref": "#/$defs/text" },
+        "articulation": { "$ref": "#/$defs/text" },
+        "harmony": { "$ref": "#/$defs/text" },
+        "rhythm": { "$ref": "#/$defs/text" },
+        "energy": { "$ref": "#/$defs/text" },
+        "foreground_occupancy": { "enum": ["low", "medium", "high"] },
+        "entry_exit": { "$ref": "#/$defs/text" },
+        "loop_behaviour": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "capability_risk": {
+      "type": "object",
+      "required": ["capability_id", "risk", "required"],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/id" },
+        "risk": { "$ref": "#/$defs/text" },
+        "required": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "direction": {
+      "type": "object",
+      "required": [
+        "direction_id",
+        "title",
+        "gameplay_hypothesis",
+        "emotional_targets",
+        "anti_targets",
+        "axes",
+        "dialogue_sfx_occupancy",
+        "neighbour_cue_behaviour",
+        "expected_audible_evidence",
+        "likely_failure_modes",
+        "required_fields",
+        "preferred_fields",
+        "provider_capability_risks",
+        "difference_summary"
+      ],
+      "properties": {
+        "direction_id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "gameplay_hypothesis": { "$ref": "#/$defs/text" },
+        "emotional_targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "anti_targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "axes": { "$ref": "#/$defs/axes" },
+        "dialogue_sfx_occupancy": { "enum": ["low", "medium", "high"] },
+        "neighbour_cue_behaviour": { "$ref": "#/$defs/text" },
+        "expected_audible_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "likely_failure_modes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "required_fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/field_path" }
+        },
+        "preferred_fields": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/field_path" }
+        },
+        "provider_capability_risks": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/capability_risk" }
+        },
+        "difference_summary": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "direction_payload": {
+      "type": "object",
+      "required": [
+        "shared_invariants",
+        "directions",
+        "recommended_direction_id",
+        "recommendation_authority",
+        "recommendation_basis"
+      ],
+      "properties": {
+        "shared_invariants": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/shared_invariant" }
+        },
+        "directions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/direction" }
+        },
+        "recommended_direction_id": { "$ref": "#/$defs/id" },
+        "recommendation_authority": {
+          "const": "agent_recommendation_for_fixture"
+        },
+        "recommendation_basis": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "gameplay": {
+      "type": "object",
+      "required": [
+        "role",
+        "foreground_occupancy",
+        "entry_intent",
+        "exit_intent",
+        "neighbor_cue_ids"
+      ],
+      "properties": {
+        "role": { "$ref": "#/$defs/id" },
+        "foreground_occupancy": { "enum": ["low", "medium", "high"] },
+        "entry_intent": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "exit_intent": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "neighbor_cue_ids": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "music": {
+      "type": "object",
+      "required": [
+        "instrumental",
+        "mood",
+        "energy_curve",
+        "bpm",
+        "key_mode",
+        "meter",
+        "sections",
+        "instrumentation_prefer",
+        "instrumentation_avoid"
+      ],
+      "properties": {
+        "instrumental": { "type": "boolean" },
+        "mood": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "energy_curve": { "$ref": "#/$defs/id" },
+        "bpm": {
+          "type": "object",
+          "required": ["minimum", "target", "maximum"],
+          "properties": {
+            "minimum": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
+            "target": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 },
+            "maximum": { "type": "number", "exclusiveMinimum": 0, "maximum": 400 }
+          },
+          "additionalProperties": false
+        },
+        "key_mode": {
+          "type": "object",
+          "required": ["key", "mode"],
+          "properties": {
+            "key": { "type": "string", "pattern": "^[a-g](#|b)?$" },
+            "mode": { "$ref": "#/$defs/id" }
+          },
+          "additionalProperties": false
+        },
+        "meter": {
+          "type": "object",
+          "required": ["beats", "unit"],
+          "properties": {
+            "beats": { "type": "integer", "minimum": 1, "maximum": 32 },
+            "unit": { "enum": [1, 2, 4, 8, 16, 32] }
+          },
+          "additionalProperties": false
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/section" }
+        },
+        "instrumentation_prefer": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "instrumentation_avoid": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "technical": {
+      "type": "object",
+      "required": [
+        "sample_rate_hz",
+        "channels",
+        "target_duration_samples",
+        "loop",
+        "source_format",
+        "delivery_format",
+        "loudness_profile_id"
+      ],
+      "properties": {
+        "sample_rate_hz": { "type": "integer", "minimum": 8000, "maximum": 192000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "target_duration_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 230400000
+        },
+        "loop": {
+          "type": "object",
+          "required": ["mode", "start_sample", "end_sample"],
+          "properties": {
+            "mode": { "enum": ["none", "full_file", "region"] },
+            "start_sample": { "type": "integer", "minimum": 0 },
+            "end_sample": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "source_format": { "enum": ["wav_pcm_s16le"] },
+        "delivery_format": { "enum": ["wav_pcm_s16le"] },
+        "loudness_profile_id": { "$ref": "#/$defs/id" }
+      },
+      "additionalProperties": false
+    },
+    "section": {
+      "type": "object",
+      "required": ["section_id", "bars", "intent"],
+      "properties": {
+        "section_id": { "$ref": "#/$defs/id" },
+        "bars": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "intent": { "type": "string", "minLength": 1, "maxLength": 512 }
+      },
+      "additionalProperties": false
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["constraint_id", "enforcement", "value"],
+      "properties": {
+        "constraint_id": { "$ref": "#/$defs/id" },
+        "enforcement": { "enum": ["required", "preferred"] },
+        "value": {}
+      },
+      "additionalProperties": false
+    },
+    "reference": {
+      "type": "object",
+      "required": ["reference_id", "artifact_sha256", "rights_record_id"],
+      "properties": {
+        "reference_id": { "$ref": "#/$defs/id" },
+        "artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "rights_record_id": { "$ref": "#/$defs/id" }
+      },
+      "additionalProperties": false
+    },
+    "brief_payload": {
+      "type": "object",
+      "required": ["gameplay", "music", "technical", "constraints", "references"],
+      "properties": {
+        "gameplay": { "$ref": "#/$defs/gameplay" },
+        "music": { "$ref": "#/$defs/music" },
+        "technical": { "$ref": "#/$defs/technical" },
+        "constraints": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/constraint" }
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/reference" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "control": {
+      "type": "object",
+      "required": ["control_id", "value", "enforcement"],
+      "properties": {
+        "control_id": { "$ref": "#/$defs/id" },
+        "value": {},
+        "enforcement": { "enum": ["required", "preferred"] }
+      },
+      "additionalProperties": false
+    },
+    "plan_payload": {
+      "type": "object",
+      "required": ["sections", "controls", "budget", "profiles", "allowed_postprocess"],
+      "properties": {
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/section" }
+        },
+        "controls": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/control" }
+        },
+        "budget": {
+          "type": "object",
+          "required": ["candidate_count", "max_attempts", "max_runtime_seconds"],
+          "properties": {
+            "candidate_count": { "type": "integer", "minimum": 1, "maximum": 64 },
+            "max_attempts": { "type": "integer", "minimum": 1, "maximum": 128 },
+            "max_runtime_seconds": { "type": "integer", "minimum": 1, "maximum": 86400 }
+          },
+          "additionalProperties": false
+        },
+        "profiles": {
+          "type": "object",
+          "required": ["qa_profile_id", "evaluation_profile_id"],
+          "properties": {
+            "qa_profile_id": { "$ref": "#/$defs/id" },
+            "evaluation_profile_id": { "const": "score-director.critic-disabled.phase-a" }
+          },
+          "additionalProperties": false
+        },
+        "allowed_postprocess": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "required": ["route", "capability_id", "capability_state", "rationale", "risks"],
+      "properties": {
+        "route": {
+          "enum": [
+            "text_to_music",
+            "audio_to_audio",
+            "inpainting",
+            "continuation",
+            "manual_ingest",
+            "replay_ingest",
+            "deterministic_postprocess",
+            "no_qualified_route"
+          ]
+        },
+        "capability_id": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }]
+        },
+        "capability_state": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["unsupported", "claimed", "experimental", "verified"] }
+          ]
+        },
+        "rationale": { "$ref": "#/$defs/text" },
+        "risks": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/text" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

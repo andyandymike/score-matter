@@ -125,8 +125,9 @@ hide:
     <p>
       ScoreMatter does not yet generate useful BGM, approve loops or mix quality,
       establish rights, publish releases, or integrate with a game runtime.
-      A separate machine-local SA3 installation is an external evaluation
-      candidate, not a fourth built-in provider. Read the
+      A separate machine-local SA3 Medium installation and generic frozen-pilot
+      orchestrator form an external evaluation lane, not a fourth built-in
+      provider. Read the
       <a href="m0-contract/">M0 public contract</a> and
       <a href="sa3-local-evaluation/">SA3 evaluation boundary</a> before relying on either path.
     </p>

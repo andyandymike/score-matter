@@ -25,10 +25,13 @@ network access, approval authority, packaging, or game integration.
 - Keep provider-specific dependencies outside the dependency-light core.
 - Keep Windows path behavior and Linux CI behavior equivalent.
 
-The current external Stable Audio 3 evaluation candidate is documented in
-[ADR 0002](docs/adr/0002-stable-audio-3-small-local-evaluation.md). It is not a
-precedent for adding model dependencies, downloads, generated audio, or provider
-claims to a contribution.
+The historical Stable Audio 3 Small Music evaluation is documented in
+[ADR 0002](docs/adr/0002-stable-audio-3-small-local-evaluation.md). The current
+private Medium capability pilot is bounded by
+[ADR 0003](docs/adr/0003-stable-audio-3-medium-capability-pilot.md). Its generic
+tracked orchestrator is not a precedent for adding model dependencies,
+automatic downloads, generated audio, private prompts, terms snapshots, or
+provider claims to a contribution.
 
 ## Reports and proposals
 

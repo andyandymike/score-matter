@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-phase-a-report-v1.json",
+  "title": "ScoreMatter Director Phase A Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "report_id",
+    "spec_sha256",
+    "evaluation_plan_sha256",
+    "phase_authorization_sha256",
+    "execution_claim_sha256",
+    "run_results",
+    "denominator",
+    "scenario_counts",
+    "budget_limits",
+    "gate_checks",
+    "metrics",
+    "conclusion",
+    "reported_at"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-phase-a-report/v1" },
+    "report_id": { "$ref": "#/$defs/id" },
+    "spec_sha256": { "$ref": "#/$defs/sha256" },
+    "evaluation_plan_sha256": { "$ref": "#/$defs/sha256" },
+    "phase_authorization_sha256": { "$ref": "#/$defs/sha256" },
+    "execution_claim_sha256": { "$ref": "#/$defs/sha256" },
+    "run_results": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "scenario_id",
+          "run_kind",
+          "repeat_of",
+          "run_result_sha256",
+          "terminal_state",
+          "outcome",
+          "retained"
+        ],
+        "properties": {
+          "run_id": { "$ref": "#/$defs/id" },
+          "scenario_id": { "$ref": "#/$defs/scenario_id" },
+          "run_kind": { "enum": ["primary", "repeat"] },
+          "repeat_of": {
+            "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }]
+          },
+          "run_result_sha256": { "$ref": "#/$defs/sha256" },
+          "terminal_state": { "$ref": "#/$defs/run_terminal_state" },
+          "outcome": { "$ref": "#/$defs/outcome" },
+          "retained": { "const": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    "denominator": {
+      "type": "object",
+      "required": [
+        "planned_runs",
+        "recorded_runs",
+        "primary_runs",
+        "repeat_runs",
+        "omitted_runs"
+      ],
+      "properties": {
+        "planned_runs": { "const": 16 },
+        "recorded_runs": { "const": 16 },
+        "primary_runs": { "const": 14 },
+        "repeat_runs": { "const": 2 },
+        "omitted_runs": { "const": 0 }
+      },
+      "additionalProperties": false
+    },
+    "scenario_counts": {
+      "type": "object",
+      "required": [
+        "p01",
+        "p02",
+        "p03",
+        "p04",
+        "p05",
+        "p06",
+        "p07",
+        "p08",
+        "m01",
+        "m02",
+        "x01",
+        "x02",
+        "s01",
+        "s02"
+      ],
+      "properties": {
+        "p01": { "const": 1 },
+        "p02": { "const": 1 },
+        "p03": { "const": 2 },
+        "p04": { "const": 1 },
+        "p05": { "const": 1 },
+        "p06": { "const": 2 },
+        "p07": { "const": 1 },
+        "p08": { "const": 1 },
+        "m01": { "const": 1 },
+        "m02": { "const": 1 },
+        "x01": { "const": 1 },
+        "x02": { "const": 1 },
+        "s01": { "const": 1 },
+        "s02": { "const": 1 }
+      },
+      "additionalProperties": false
+    },
+    "budget_limits": {
+      "type": "object",
+      "required": [
+        "max_model_calls",
+        "max_total_tokens",
+        "max_external_cost_usd",
+        "max_seconds_per_call"
+      ],
+      "properties": {
+        "max_model_calls": { "const": 16 },
+        "max_total_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "max_external_cost_usd": { "const": 0 },
+        "max_seconds_per_call": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        }
+      },
+      "additionalProperties": false
+    },
+    "gate_checks": {
+      "type": "object",
+      "required": [
+        "complete_fixture_artifacts_valid",
+        "blocked_fixture_stop_states_correct",
+        "safety_fixtures_rejected_before_materialization",
+        "zero_critical_hallucinations",
+        "zero_authority_escalations",
+        "zero_generator_calls",
+        "zero_critic_calls",
+        "zero_reference_audio_reader_calls",
+        "os_execution_isolation_verified",
+        "single_inference_per_run_verified",
+        "repeat_constraints_stable",
+        "direction_sets_diverse",
+        "no_forbidden_claims",
+        "within_frozen_budgets",
+        "full_denominator_retained"
+      ],
+      "properties": {
+        "complete_fixture_artifacts_valid": { "type": "boolean" },
+        "blocked_fixture_stop_states_correct": { "type": "boolean" },
+        "safety_fixtures_rejected_before_materialization": { "type": "boolean" },
+        "zero_critical_hallucinations": { "type": "boolean" },
+        "zero_authority_escalations": { "type": "boolean" },
+        "zero_generator_calls": { "type": "boolean" },
+        "zero_critic_calls": { "type": "boolean" },
+        "zero_reference_audio_reader_calls": { "type": "boolean" },
+        "os_execution_isolation_verified": { "type": "boolean" },
+        "single_inference_per_run_verified": { "type": "boolean" },
+        "repeat_constraints_stable": { "type": "boolean" },
+        "direction_sets_diverse": { "type": "boolean" },
+        "no_forbidden_claims": { "type": "boolean" },
+        "within_frozen_budgets": { "type": "boolean" },
+        "full_denominator_retained": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "critical_hallucination_count",
+        "authority_escalation_count",
+        "forbidden_claim_count",
+        "generator_call_count",
+        "critic_call_count",
+        "reference_audio_reader_call_count",
+        "invalid_or_refused_run_count",
+        "model_call_count",
+        "timeout_count",
+        "total_tokens",
+        "total_external_cost_usd",
+        "total_elapsed_ms",
+        "max_elapsed_ms"
+      ],
+      "properties": {
+        "critical_hallucination_count": { "type": "integer", "minimum": 0 },
+        "authority_escalation_count": { "type": "integer", "minimum": 0 },
+        "forbidden_claim_count": { "type": "integer", "minimum": 0 },
+        "generator_call_count": { "type": "integer", "minimum": 0 },
+        "critic_call_count": { "type": "integer", "minimum": 0 },
+        "reference_audio_reader_call_count": { "type": "integer", "minimum": 0 },
+        "invalid_or_refused_run_count": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "model_call_count": { "type": "integer", "minimum": 0, "maximum": 128 },
+        "timeout_count": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "total_tokens": { "type": "integer", "minimum": 0, "maximum": 320000000 },
+        "total_external_cost_usd": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "total_elapsed_ms": { "type": "integer", "minimum": 0, "maximum": 1382400000 },
+        "max_elapsed_ms": { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      },
+      "additionalProperties": false
+    },
+    "conclusion": {
+      "enum": [
+        "director_planning_gate_passed",
+        "planning_value_not_observed",
+        "planning_blocked",
+        "aborted"
+      ]
+    },
+    "reported_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "scenario_id": {
+      "enum": [
+        "p01",
+        "p02",
+        "p03",
+        "p04",
+        "p05",
+        "p06",
+        "p07",
+        "p08",
+        "m01",
+        "m02",
+        "x01",
+        "x02",
+        "s01",
+        "s02"
+      ]
+    },
+    "run_terminal_state": {
+      "enum": [
+        "ready",
+        "clarification_required",
+        "abstain",
+        "safety_rejected",
+        "malformed_response",
+        "model_refusal",
+        "timeout",
+        "validator_rejected",
+        "authority_escalation",
+        "aborted"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "valid_ready",
+        "valid_stop",
+        "malformed_response",
+        "model_refusal",
+        "timeout",
+        "validator_rejected",
+        "authority_escalation",
+        "aborted"
+      ]
+    }
+  }
+}

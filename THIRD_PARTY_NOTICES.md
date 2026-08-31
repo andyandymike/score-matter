@@ -20,14 +20,16 @@ reference recording, generated production audio, or third-party audio asset.
 Project-authored synthetic audio is generated only as ignored local test
 evidence.
 
-An optional Stable Audio 3 Small Music evaluation runtime may be installed by
-an operator under the ignored `models/` root. Its upstream source, isolated
-environment, optimized weights, T5Gemma component, and Hugging Face cache are
-not tracked, bundled, redistributed, or licensed by ScoreMatter. The currently
-documented reference installation is governed by the exact upstream license,
-acceptable-use, gated-access, and component terms recorded in the
+An optional Stable Audio 3 evaluation runtime may be installed by an operator
+under the ignored `models/` root. The 2026-08-25 historical smoke used Small
+Music; the 2026-08-28 private capability pilot targets exact locally installed
+Medium/SAME-L files. Upstream source, isolated environments, optimized weights,
+T5Gemma components, Hugging Face caches, terms snapshots, and generated audio
+are not tracked, bundled, redistributed, or licensed by ScoreMatter. The
+applicable upstream license, acceptable-use, gated-access, and component terms
+are described in the
 [SA3 local evaluation guide](docs/sa3-local-evaluation.md). Those terms can
-change and must be reviewed for the intended action.
+change and must be reviewed and frozen for the intended action.
 
 The ScoreMatter MIT license does not grant rights to that runtime or any other
 provider, model, weight, dataset, input audio, generated output, or

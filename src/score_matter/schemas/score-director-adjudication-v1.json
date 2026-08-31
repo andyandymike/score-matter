@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-adjudication-v1.json",
+  "title": "ScoreMatter Director Adjudication v1",
+  "description": "Hidden Phase A fixture expectations. This document is never model input.",
+  "type": "object",
+  "required": [
+    "schema",
+    "adjudication_id",
+    "spec_sha256",
+    "context_sha256",
+    "scenario_id",
+    "expected_terminal_state",
+    "explicit_facts",
+    "delegated_choices",
+    "conflict_groups",
+    "material_gaps",
+    "forbidden_inventions",
+    "required_constraints",
+    "preferred_constraints",
+    "required_positive_targets",
+    "required_anti_targets",
+    "forbidden_authority_claims",
+    "acceptable_direction_axes",
+    "expected_route_states",
+    "expected_critic_profile_id",
+    "allowed_no_winner_outcomes",
+    "reviewer_alias",
+    "frozen_at"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-adjudication/v1" },
+    "adjudication_id": { "$ref": "#/$defs/id" },
+    "spec_sha256": { "$ref": "#/$defs/sha256" },
+    "context_sha256": { "$ref": "#/$defs/sha256" },
+    "scenario_id": { "$ref": "#/$defs/scenario_id" },
+    "expected_terminal_state": { "$ref": "#/$defs/terminal_state" },
+    "explicit_facts": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "material_input_id",
+          "field_path",
+          "expected_classification",
+          "expected_value"
+        ],
+        "properties": {
+          "material_input_id": { "$ref": "#/$defs/id" },
+          "field_path": { "$ref": "#/$defs/field_path" },
+          "expected_classification": {
+            "enum": ["explicit_fact", "required_constraint", "preferred_constraint"]
+          },
+          "expected_value": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    "delegated_choices": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/delegated_choice" }
+    },
+    "conflict_groups": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["group_id", "material_input_ids"],
+        "properties": {
+          "group_id": { "$ref": "#/$defs/id" },
+          "material_input_ids": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/id" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "material_gaps": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": ["gap_id", "field_path", "blocking", "expected_classification"],
+        "properties": {
+          "gap_id": { "$ref": "#/$defs/id" },
+          "field_path": { "$ref": "#/$defs/field_path" },
+          "blocking": { "type": "boolean" },
+          "expected_classification": {
+            "enum": ["unknown_blocking", "unknown_non_blocking", "conflict"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "forbidden_inventions": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": ["invention_id", "statement"],
+        "properties": {
+          "invention_id": { "$ref": "#/$defs/id" },
+          "statement": { "$ref": "#/$defs/text" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required_constraints": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/constraint_expectation" }
+    },
+    "preferred_constraints": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/constraint_expectation" }
+    },
+    "required_positive_targets": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "required_anti_targets": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "forbidden_authority_claims": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "acceptable_direction_axes": {
+      "type": "array",
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/axis" }
+    },
+    "expected_route_states": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["route", "capability_state"],
+        "properties": {
+          "route": { "$ref": "#/$defs/route" },
+          "capability_state": {
+            "oneOf": [
+              { "type": "null" },
+              { "enum": ["unsupported", "claimed", "experimental", "verified"] }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "expected_critic_profile_id": { "const": "score-director.critic-disabled.phase-a" },
+    "allowed_no_winner_outcomes": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "none",
+          "no_direction_selected",
+          "no_qualified_route",
+          "all_directions_rejected"
+        ]
+      }
+    },
+    "reviewer_alias": { "$ref": "#/$defs/id" },
+    "frozen_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "field_path": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){0,15}$",
+      "maxLength": 256
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "scenario_id": {
+      "enum": [
+        "p01",
+        "p02",
+        "p03",
+        "p04",
+        "p05",
+        "p06",
+        "p07",
+        "p08",
+        "m01",
+        "m02",
+        "x01",
+        "x02",
+        "s01",
+        "s02"
+      ]
+    },
+    "terminal_state": {
+      "enum": ["ready", "clarification_required", "abstain", "safety_rejected"]
+    },
+    "axis": {
+      "enum": [
+        "palette",
+        "register",
+        "density",
+        "articulation",
+        "harmony",
+        "rhythm",
+        "energy",
+        "foreground_occupancy",
+        "entry_exit",
+        "loop_behaviour"
+      ]
+    },
+    "route": {
+      "enum": [
+        "text_to_music",
+        "audio_to_audio",
+        "inpainting",
+        "continuation",
+        "manual_ingest",
+        "replay_ingest",
+        "deterministic_postprocess",
+        "no_qualified_route"
+      ]
+    },
+    "constraint_expectation": {
+      "type": "object",
+      "required": [
+        "constraint_id",
+        "material_input_id",
+        "field_path",
+        "expected_value",
+        "statement"
+      ],
+      "properties": {
+        "constraint_id": { "$ref": "#/$defs/id" },
+        "material_input_id": { "$ref": "#/$defs/id" },
+        "field_path": { "$ref": "#/$defs/field_path" },
+        "expected_value": {},
+        "statement": { "$ref": "#/$defs/text" }
+      },
+      "additionalProperties": false
+    },
+    "delegated_choice": {
+      "type": "object",
+      "required": ["field_path", "classification"],
+      "properties": {
+        "field_path": { "$ref": "#/$defs/field_path" },
+        "allowed_kind": { "$ref": "#/$defs/id" },
+        "allowed_values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {}
+        },
+        "classification": { "const": "assumption_proposed_for_review" }
+      },
+      "oneOf": [
+        { "required": ["allowed_kind"], "not": { "required": ["allowed_values"] } },
+        { "required": ["allowed_values"], "not": { "required": ["allowed_kind"] } }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

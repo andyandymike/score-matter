@@ -26,3 +26,9 @@ class IntegrityError(ScoreMatterError):
 
 class ProviderError(ScoreMatterError):
     code = "provider_failed"
+
+
+class DirectorError(ScoreMatterError):
+    """Fail-closed error raised by the non-provider director evidence lane."""
+
+    code = "director_failed"

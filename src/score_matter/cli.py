@@ -11,6 +11,15 @@ from .bundle import load_execution_bundle
 from .canonical import canonical_sha256, file_sha256, write_canonical_no_replace
 from .contracts import load_contract, validate_document
 from .demo import create_demo_bundle
+from .director.evidence import DirectorEvidenceStore
+from .director.kernel import director_kernel_manifest, director_kernel_sha256
+from .director.phase_a import (
+    command_backend_from_descriptor,
+    load_phase_a_inventory,
+    run_phase_a_inventory,
+    verify_command_descriptor,
+    verify_phase_a_preflight,
+)
 from .errors import BoundaryError, ScoreMatterError
 from .providers import manual, mock, replay
 from .providers.base import ExecutionContext
@@ -92,7 +101,51 @@ def _build_parser() -> argparse.ArgumentParser:
     replay_verify.add_argument("run_receipt", type=Path)
     replay_verify.add_argument("--store", type=Path, default=Path(".local"))
     replay_verify.set_defaults(handler=_handle_replay_verify)
+
+    director_parser = commands.add_parser(
+        "director", help="Run bounded, non-provider music-director experiments."
+    )
+    director_commands = director_parser.add_subparsers(
+        dest="director_command", required=True
+    )
+    director_kernel = director_commands.add_parser(
+        "kernel-digest",
+        help="Print the runtime-recomputed Director kernel identity without a model call.",
+    )
+    director_kernel.set_defaults(handler=_handle_director_kernel_digest)
+    phase_a_parser = director_commands.add_parser(
+        "phase-a", help="Preflight or run the frozen Director Phase A inventory."
+    )
+    phase_a_commands = phase_a_parser.add_subparsers(
+        dest="director_phase_a_command", required=True
+    )
+    phase_a_preflight = phase_a_commands.add_parser(
+        "preflight", help="Verify the complete frozen Phase A inventory without a model call."
+    )
+    _add_director_phase_a_inputs(phase_a_preflight)
+    phase_a_preflight.set_defaults(handler=_handle_director_phase_a_preflight)
+
+    phase_a_run = phase_a_commands.add_parser(
+        "run", help="Execute or resume the exact frozen Phase A run inventory."
+    )
+    _add_director_phase_a_inputs(phase_a_run)
+    phase_a_run.add_argument("--output", type=Path, required=True)
+    phase_a_run.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse only complete, digest-matching run evidence in the output directory.",
+    )
+    phase_a_run.set_defaults(handler=_handle_director_phase_a_run)
     return parser
+
+
+def _add_director_phase_a_inputs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--spec", type=Path, required=True)
+    parser.add_argument("--plan", type=Path, required=True)
+    parser.add_argument("--authorization", type=Path, required=True)
+    parser.add_argument("--provider-descriptor", type=Path, required=True)
+    parser.add_argument("--command-descriptor", type=Path, required=True)
+    parser.add_argument("--inventory-root", type=Path, required=True)
 
 
 def _print_json(document: dict[str, Any]) -> None:
@@ -203,6 +256,141 @@ def _handle_replay_verify(args: argparse.Namespace) -> int:
         f"receipt={receipt_file.absolute_path} receipt_sha256={receipt_file.sha256} "
         f"source_run_receipt_sha256={receipt['source_run_receipt_sha256']} "
         f"artifacts={len(receipt['artifacts'])}"
+    )
+    return 0
+
+
+def _load_and_verify_director_phase_a(
+    args: argparse.Namespace,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+]:
+    evaluation_plan = load_contract(
+        args.plan, expected_schema="score-director-evaluation-plan/v1"
+    )
+    phase_authorization = load_contract(
+        args.authorization,
+        expected_schema="score-director-phase-authorization/v1",
+    )
+    provider_descriptor = load_contract(
+        args.provider_descriptor, expected_schema="score-provider-descriptor/v1"
+    )
+    command_descriptor = load_contract(
+        args.command_descriptor,
+        expected_schema="score-director-command-descriptor/v1",
+    )
+    contexts, adjudications = load_phase_a_inventory(args.inventory_root)
+    verify_command_descriptor(
+        evaluation_plan=evaluation_plan,
+        command_descriptor=command_descriptor,
+    )
+    verify_phase_a_preflight(
+        spec_path=args.spec,
+        evaluation_plan=evaluation_plan,
+        phase_authorization=phase_authorization,
+        provider_descriptor=provider_descriptor,
+        contexts=contexts,
+        adjudications=adjudications,
+        backend_id=command_descriptor["backend_id"],
+    )
+    return (
+        evaluation_plan,
+        phase_authorization,
+        provider_descriptor,
+        command_descriptor,
+        contexts,
+        adjudications,
+    )
+
+
+def _handle_director_phase_a_preflight(args: argparse.Namespace) -> int:
+    (
+        evaluation_plan,
+        phase_authorization,
+        _provider_descriptor,
+        _command_descriptor,
+        contexts,
+        _adjudications,
+    ) = _load_and_verify_director_phase_a(args)
+    print(
+        "SCORE_DIRECTOR_PHASE_A_PREFLIGHT_OK "
+        f"evaluation_plan={evaluation_plan['evaluation_plan_id']} "
+        f"plan_sha256={canonical_sha256(evaluation_plan)} "
+        f"authorization_sha256={canonical_sha256(phase_authorization)} "
+        f"fixtures={len(contexts)} runs={len(evaluation_plan['run_inventory'])} "
+        "model_calls=0 assurance=process_observed pass_eligible=false"
+    )
+    return 0
+
+
+def _handle_director_kernel_digest(args: argparse.Namespace) -> int:
+    del args
+    manifest = director_kernel_manifest()
+    print(
+        "SCORE_DIRECTOR_KERNEL_OK "
+        f"sha256={director_kernel_sha256()} files={len(manifest['files'])} model_calls=0"
+    )
+    return 0
+
+
+def _handle_director_phase_a_run(args: argparse.Namespace) -> int:
+    (
+        evaluation_plan,
+        phase_authorization,
+        provider_descriptor,
+        command_descriptor,
+        contexts,
+        adjudications,
+    ) = _load_and_verify_director_phase_a(args)
+
+    output = args.output
+    frozen_output = Path(evaluation_plan["evidence_root"]).resolve(strict=False)
+    if output.resolve(strict=False) != frozen_output:
+        raise BoundaryError(
+            "--output differs from the unique evidence_root frozen by the plan",
+            code="director_evidence_root_mismatch",
+        )
+    claim_path = Path(evaluation_plan["execution_claim_path"])
+    if claim_path.exists() and not args.resume:
+        raise BoundaryError(
+            "the frozen Phase A execution claim already exists; redraw is forbidden",
+            code="director_execution_already_claimed",
+        )
+    if output.exists():
+        if output.is_symlink() or not output.is_dir():
+            raise BoundaryError(f"director output must be a regular directory: {output}")
+        if not args.resume:
+            raise BoundaryError(
+                f"director output already exists; use --resume to verify retained runs: {output}",
+                code="destination_exists",
+            )
+    evidence_store = DirectorEvidenceStore(output)
+    backend = command_backend_from_descriptor(
+        evaluation_plan=evaluation_plan,
+        command_descriptor=command_descriptor,
+    )
+    results, report, report_file = run_phase_a_inventory(
+        spec_path=args.spec,
+        evaluation_plan=evaluation_plan,
+        phase_authorization=phase_authorization,
+        contexts=contexts,
+        adjudications=adjudications,
+        provider_descriptor=provider_descriptor,
+        backend=backend,
+        evidence_store=evidence_store,
+        resume=args.resume,
+        command_descriptor=command_descriptor,
+    )
+    print(
+        "SCORE_DIRECTOR_PHASE_A_RECORDED "
+        f"conclusion={report['conclusion']} "
+        f"report={report_file.path.resolve()} "
+        f"report_sha256={report_file.sha256} runs={len(results)}"
     )
     return 0
 

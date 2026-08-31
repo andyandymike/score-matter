@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://score-matter.dev/schemas/score-director-evaluation-plan-v1.json",
+  "title": "ScoreMatter Director Evaluation Plan v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "evaluation_plan_id",
+    "spec_sha256",
+    "phase",
+    "evidence_root",
+    "execution_claim_path",
+    "fixtures",
+    "run_inventory",
+    "agent",
+    "allowed_tools",
+    "budgets",
+    "route_policy",
+    "stubs",
+    "reporting",
+    "frozen_at"
+  ],
+  "properties": {
+    "schema": { "const": "score-director-evaluation-plan/v1" },
+    "evaluation_plan_id": { "$ref": "#/$defs/id" },
+    "spec_sha256": { "$ref": "#/$defs/sha256" },
+    "phase": { "const": "phase_a" },
+    "evidence_root": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "execution_claim_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "required": [
+          "scenario_id",
+          "context_sha256",
+          "adjudication_sha256",
+          "expected_terminal_state"
+        ],
+        "properties": {
+          "scenario_id": { "$ref": "#/$defs/scenario_id" },
+          "context_sha256": { "$ref": "#/$defs/sha256" },
+          "adjudication_sha256": { "$ref": "#/$defs/sha256" },
+          "expected_terminal_state": { "$ref": "#/$defs/agent_terminal_state" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "run_inventory": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "scenario_id",
+          "context_sha256",
+          "adjudication_sha256",
+          "run_kind",
+          "repeat_of",
+          "model_seed"
+        ],
+        "properties": {
+          "run_id": { "$ref": "#/$defs/id" },
+          "scenario_id": { "$ref": "#/$defs/scenario_id" },
+          "context_sha256": { "$ref": "#/$defs/sha256" },
+          "adjudication_sha256": { "$ref": "#/$defs/sha256" },
+          "run_kind": { "enum": ["primary", "repeat"] },
+          "repeat_of": {
+            "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }]
+          },
+          "model_seed": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "agent": {
+      "type": "object",
+      "required": [
+        "backend_id",
+        "model_id",
+        "model_revision",
+        "component_sha256",
+        "kernel_sha256",
+        "policy_sha256",
+        "settings",
+        "settings_sha256"
+      ],
+      "properties": {
+        "backend_id": { "$ref": "#/$defs/id" },
+        "model_id": { "$ref": "#/$defs/id" },
+        "model_revision": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "component_sha256": { "$ref": "#/$defs/sha256" },
+        "kernel_sha256": { "$ref": "#/$defs/sha256" },
+        "policy_sha256": { "$ref": "#/$defs/sha256" },
+        "settings": { "$ref": "#/$defs/settings" },
+        "settings_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "allowed_tools": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "budgets": {
+      "type": "object",
+      "required": [
+        "max_model_calls",
+        "max_total_tokens",
+        "max_external_cost_usd",
+        "max_seconds_per_call",
+        "max_clarification_rounds",
+        "max_questions_per_scenario",
+        "max_generator_calls",
+        "max_critic_calls"
+      ],
+      "properties": {
+        "max_model_calls": { "const": 16 },
+        "max_total_tokens": { "type": "integer", "minimum": 1, "maximum": 262144 },
+        "max_external_cost_usd": { "const": 0 },
+        "max_seconds_per_call": { "type": "integer", "minimum": 1, "maximum": 120 },
+        "max_clarification_rounds": { "const": 1 },
+        "max_questions_per_scenario": { "const": 3 },
+        "max_generator_calls": { "const": 0 },
+        "max_critic_calls": { "const": 0 }
+      },
+      "additionalProperties": false
+    },
+    "route_policy": {
+      "type": "object",
+      "required": [
+        "provider_descriptor_sha256",
+        "allowed_routes",
+        "unsupported_required_control_action",
+        "model_downloads_allowed",
+        "network_allowed",
+        "provider_substitution_allowed"
+      ],
+      "properties": {
+        "provider_descriptor_sha256": { "$ref": "#/$defs/sha256" },
+        "allowed_routes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/route" }
+        },
+        "unsupported_required_control_action": { "const": "abstain" },
+        "model_downloads_allowed": { "const": false },
+        "network_allowed": { "const": false },
+        "provider_substitution_allowed": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "stubs": {
+      "type": "object",
+      "required": ["generator", "critic", "reference_audio_reader"],
+      "properties": {
+        "generator": { "const": "fail_if_called" },
+        "critic": { "const": "fail_if_called" },
+        "reference_audio_reader": { "const": "fail_if_called" }
+      },
+      "additionalProperties": false
+    },
+    "reporting": {
+      "type": "object",
+      "required": [
+        "full_denominator_required",
+        "retain_invalid_runs",
+        "retain_refused_runs",
+        "aggregate_score_allowed"
+      ],
+      "properties": {
+        "full_denominator_required": { "const": true },
+        "retain_invalid_runs": { "const": true },
+        "retain_refused_runs": { "const": true },
+        "aggregate_score_allowed": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "frozen_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "scenario_id": {
+      "enum": [
+        "p01",
+        "p02",
+        "p03",
+        "p04",
+        "p05",
+        "p06",
+        "p07",
+        "p08",
+        "m01",
+        "m02",
+        "x01",
+        "x02",
+        "s01",
+        "s02"
+      ]
+    },
+    "agent_terminal_state": {
+      "enum": ["ready", "clarification_required", "abstain", "safety_rejected"]
+    },
+    "route": {
+      "enum": [
+        "text_to_music",
+        "audio_to_audio",
+        "inpainting",
+        "continuation",
+        "manual_ingest",
+        "replay_ingest",
+        "deterministic_postprocess",
+        "no_qualified_route"
+      ]
+    },
+    "settings": {
+      "type": "object",
+      "required": ["temperature", "top_p", "max_output_tokens", "seed", "response_format"],
+      "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "top_p": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "max_output_tokens": { "type": "integer", "minimum": 1, "maximum": 262144 },
+        "seed": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          ]
+        },
+        "response_format": { "const": "json" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
