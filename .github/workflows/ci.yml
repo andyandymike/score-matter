@@ -59,21 +59,56 @@ jobs:
       - name: Smoke installed CLI
         run: score-matter --help
 
+  shared-audio:
+    name: Shared audio (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-audio.txt
+            pyproject.toml
+      - name: Build wheels from the pinned core source and product requirements
+        run: python -m pip wheel --disable-pip-version-check --wheel-dir .local/audio-wheels -r requirements-audio.txt
+      - name: Install the built wheels without a package index
+        run: python -m pip install --no-index --find-links .local/audio-wheels "score-matter[audio]==0.1.0.dev0"
+      - name: Verify dependency consistency
+        run: python -m pip check
+      - name: Verify installed authoring, adapter tests and exact exports (zero model calls)
+        run: python -X utf8 tools/check_shared_audio.py
+
   release-gate:
     name: Release Gate
     if: ${{ always() }}
     needs:
       - m0
+      - shared-audio
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
     steps:
-      - name: Require every M0 job
+      - name: Require base and shared audio jobs
         shell: bash
         env:
           M0_RESULT: "${{ needs.m0.result }}"
+          AUDIO_RESULT: "${{ needs['shared-audio'].result }}"
         run: |
           printf '%s\n' "M0=$M0_RESULT"
-          if [ "$M0_RESULT" != "success" ]; then
+          printf '%s\n' "Shared audio=$AUDIO_RESULT"
+          if [ "$M0_RESULT" != "success" ] || [ "$AUDIO_RESULT" != "success" ]; then
             exit 1
           fi

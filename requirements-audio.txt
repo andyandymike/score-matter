@@ -1,0 +1,3 @@
+# Optional authoring installation, including the reviewed core 0.6.0 source.
+matter-audio-core @ git+https://github.com/andyandymike/matter-audio-core.git@7834d03ad5447dd383b3f011e20d381ac0aa0f03
+.[audio]

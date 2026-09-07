@@ -141,3 +141,7 @@ Project-authored source code and public documentation are licensed under the
 [MIT License](LICENSE). Dependencies, model code, model weights, datasets,
 reference audio, and generated outputs retain separate terms and never inherit
 MIT merely by passing through ScoreMatter.
+
+## Shared audio tools
+
+The optional [shared audio entry point](docs/shared-audio.md) provides editing, protected sessions, loops, scene timelines, cue packages and local search through the shared core 0.6.0. It also exposes the existing configured local SA3 inpainting runtime. Follow the pinned installation and zero-model verification steps before use.

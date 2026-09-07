@@ -46,6 +46,7 @@ theme:
 nav:
   - Home: README.md
   - Getting started: getting-started.md
+  - Shared audio authoring: shared-audio.md
   - Research and internals:
       - SA3 local runtime and research: sa3-local-evaluation.md
       - M0 evidence contract: m0-contract.md

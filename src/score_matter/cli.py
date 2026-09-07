@@ -46,6 +46,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
+    commands.add_parser("audio", help="Inspect and edit audio through the optional shared core.")
+
     generate_parser = commands.add_parser(
         "generate",
         help="Generate one local SA3 BGM candidate for immediate listening.",
@@ -671,6 +673,10 @@ def _handle_director_phase_a_run(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "audio":
+        from .audio import main as audio_main
+        return audio_main(arguments[1:])
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
