@@ -9,13 +9,14 @@ from matter_audio_core.actions import ActionService
 from matter_audio_core.artifacts import ArtifactStore, stable_read
 from matter_audio_core.contracts import (
     ASSET_PATTERN, MAX_JSON_BYTES, PROTECTION_REF, REQUEST_PATTERN,
-    canonical, fingerprint, object_schema, parse_json, validate,
+    fingerprint, object_schema, parse_json, validate,
 )
 from matter_audio_core.errors import AudioError
 from matter_audio_core.fades import FRAME_COUNT
 from matter_audio_core.media import decode_wav
 from matter_audio_core.session_contracts import CONSTRAINTS_SCHEMA, REVISION
 from matter_audio_core.sessions import SessionService
+from .music_publication import validated_producer
 from .music_validation import checked_asset
 
 
@@ -160,15 +161,7 @@ def _annotation_document(store, request):
 
 
 def _publish(store, request_id, binding, document, role, parents):
-    data = canonical(document)
-    if len(data) > MAX_JSON_BYTES:
-        raise AudioError("json_too_large", "Musical document exceeds 1 MiB")
-
-    def produce(publication):
-        output = publication.add(data, {"kind": role, "content_type": "application/json"}, role=role, parents=parents)
-        return {"annotation" if role == "music_annotation" else "plan": output, "document": document,
-                "limitations": LIMITATIONS}
-
+    produce = validated_producer(store, request_id, binding, document, role, parents, LIMITATIONS)
     return store.transact(request_id, binding, produce)
 
 
@@ -268,12 +261,8 @@ def _loop_period(resolution, audio):
 
 def _existing_regions(store, target, audio):
     service = SessionService(store)
-    # Core 0.6 has no public single-revision getter. Reuse its historical query
-    # inside its checked read transaction; do not infer history from today's head.
-    with service.database.transaction() as connection:
-        row = service._revision(connection, target["session_id"], target["expected_revision"])
-        selected = parse_json(row["asset_json"].encode("utf-8"))
-    if selected != audio:
+    historical = service.revision(target["session_id"], target["expected_revision"])
+    if historical["selected_asset"] != audio:
         raise AudioError("music_session_asset_mismatch", "Historical session selection differs from the plan's exact annotated audio")
     mapped = service.constraints(target["session_id"], revision=target["expected_revision"])["mapped_regions"]
     return [{key: region[key] for key in ("start_frame", "end_frame")} for region in mapped]

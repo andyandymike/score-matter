@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from matter_audio_core.actions import ActionService
 from matter_audio_core.artifacts import ArtifactStore
-from matter_audio_core.contracts import MAX_JSON_BYTES, canonical, fingerprint, object_schema, parse_json, validate
+from matter_audio_core.contracts import MAX_JSON_BYTES, fingerprint, object_schema, parse_json, validate
 from matter_audio_core.errors import AudioError
 from matter_audio_core.fades import FRAME_COUNT
 
 from .music import ASSET_ID, IDENTIFIER, _load_annotation, _ref
+from .music_publication import validated_producer
 from .music_validation import checked_asset, validation_scope
 
 
@@ -15,7 +16,7 @@ ROLE = "music_arrangement"
 DOCUMENT_SCHEMA = "score-music-arrangement-plan/v1"
 LIMITS = {"segments": 128, "repeat": 64, "occurrences": 1024, "distinct_audio": 16, "parents": 144,
           "input_wav_bytes": 64 * 1024 * 1024, "output_wav_bytes": 64 * 1024 * 1024,
-          "publication_json_bytes": MAX_JSON_BYTES, "publication_reserved_bytes": 8192}
+          "publication_json_bytes": MAX_JSON_BYTES}
 SEGMENT_SCHEMA = object_schema({"id": IDENTIFIER, "annotation_id": ASSET_ID, "region_id": IDENTIFIER,
                                 "repeat": {"type": "integer", "minimum": 1, "maximum": LIMITS["repeat"]}})
 ARRANGE_SCHEMA = object_schema({"schema": {"const": "score-music-arrange/v1"}, "request_id": IDENTIFIER,
@@ -42,24 +43,6 @@ V2_LIMITATIONS = [
     "There is no beat alignment, time stretching, resampling, global tempo inference or automatic listening approval.",
     *LIMITATIONS[2:],
 ]
-
-
-def _publication_budget(store, binding, document, parents, limitations=LIMITATIONS):
-    """Bound the entire receipt before claiming, including its duplicated metadata.
-
-    Core stores document and binding once each, and parents in both outputs[0]
-    and plan. The reserve covers their fixed asset-record/manifest fields. Count
-    variable product/request/limitations separately, so large labels cannot hide
-    inside that reserve. Core 0.6's claim itself contains only bounded IDs/digest.
-    """
-    data = canonical(document)
-    variable = {"product": store.product, "request_id": document["request"]["request_id"], "limitations": limitations}
-    budget = (len(data) + len(canonical(binding)) + 2 * len(canonical(parents))
-              + len(canonical(variable)) + LIMITS["publication_reserved_bytes"])
-    if len(data) > MAX_JSON_BYTES or budget > MAX_JSON_BYTES:
-        raise AudioError("json_too_large", "Musical document and complete publication exceed the JSON size budget",
-                         details={"budgeted_bytes": budget, "maximum_bytes": MAX_JSON_BYTES})
-    return data
 
 
 def _transition_timeline(request, segments, original):
@@ -175,18 +158,13 @@ def _build(store, request):
     if v2:
         document.update({"transitions": transitions, "transition_curve": "linear", "envelope_profile": "q24",
                          "shortened_by_frames": sum(item["crossfade_frames"] for item in transitions)})
-    data = _publication_budget(store, binding, document, parents, V2_LIMITATIONS if v2 else LIMITATIONS)
-    return binding, document, parents, data
+    produce = validated_producer(store, request["request_id"], binding, document, ROLE, parents,
+                                 V2_LIMITATIONS if v2 else LIMITATIONS)
+    return binding, document, parents, produce
 
 
 def arrange(store: ArtifactStore, request):
-    binding, document, parents, data = _build(store, request)
-
-    def produce(publication):
-        output = publication.add(data, {"kind": ROLE, "content_type": "application/json"}, role=ROLE, parents=parents)
-        return {"plan": output, "document": document,
-                "limitations": V2_LIMITATIONS if request["schema"] == "score-music-arrange/v2" else LIMITATIONS}
-
+    binding, _, _, produce = _build(store, request)
     return store.transact(request["request_id"], binding, produce)
 
 

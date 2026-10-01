@@ -3,7 +3,7 @@
 `score-matter audio` provides shared editing and an optional adapter for an
 already configured local SA3 inpainting runtime. Existing `generate` remains a
 separate entry point.
-Both products use Matter Audio Core **0.6.0** for sessions, PCM protection, jobs,
+Both products use Matter Audio Core **0.6.1** for sessions, PCM protection, jobs,
 comparisons, loops, scene timelines, cue packages and measured local search.
 
 ## Install from a clean checkout
@@ -32,12 +32,12 @@ python -X utf8 tools/check_shared_audio.py
 ```
 
 `requirements-audio.txt` builds the core from immutable commit
-`7834d03ad5447dd383b3f011e20d381ac0aa0f03`. It does not assume the core is on PyPI.
+`9ba1b8b1536d05beb8ebaeda39ba76cef0e92538`. It does not assume the core is on PyPI.
 The second step installs only the collected wheels. Retain that directory for
 offline installation on compatible Python/platform environments. Transitive
 third-party dependencies are resolved during the build; this is not a lockfile
 for every platform or a byte-reproducible wheel build. An absent core or a version
-other than 0.6.0 returns a structured installation error.
+other than 0.6.1 returns a structured installation error.
 
 The wheel installation includes ScoreMatter's `audio` extra and refreshes its
 installed dependency metadata. Base-only installation with `python -m pip install .`
@@ -385,8 +385,8 @@ establish musical or listening acceptance.
 Limits apply together: 128 segments with unique IDs, 1–64 repeats each, at most
 1,024 occurrences, 16 distinct audio assets and 144 parent references. Core also
 limits the combined **complete input WAV files** to 64 MiB and the output WAV to
-64 MiB. A conservative size check covers the complete publication receipt,
-including its duplicated metadata, under the 1 MiB JSON limit. Some combinations
+64 MiB. Core validates the complete publication receipt, including its duplicated
+metadata, against the 1 MiB JSON limit before a music request is claimed. Some combinations
 below the count limits can therefore still exceed the metadata budget. All these
 checks happen before claiming the arrangement request or rendering audio.
 
@@ -592,13 +592,13 @@ Cue exports bind exact WAV bytes and optional saved selections. Comparison-page
 preview gain never changes delivery. Normalization uses RMS/peak, not LUFS;
 overlap loops shorten the selected window; feature distance does not provide
 semantic audio understanding. See the pinned
-[core production guide](https://github.com/andyandymike/matter-audio-core/blob/7834d03ad5447dd383b3f011e20d381ac0aa0f03/docs/production.md)
+[core production guide](https://github.com/andyandymike/matter-audio-core/blob/9ba1b8b1536d05beb8ebaeda39ba76cef0e92538/docs/production.md)
 for examples. These core operations call no audio model. Opening a comparison
 page does not start playback. Listening and game integration remain separate.
 
 ## Upgrade an existing workspace
 
-Stop clients and retain a backup before upgrading. Core 0.6.0 uses SQLite schema
+Stop clients and retain a backup before upgrading. Core 0.6.1 uses SQLite schema
 4, the same schema as 0.5. For an older workspace:
 
 ```sh

@@ -22,7 +22,7 @@ def require(condition, message):
 
 
 def main():
-    require(importlib.metadata.version("matter-audio-core") == "0.6.0", "Install the pinned core 0.6.0")
+    require(importlib.metadata.version("matter-audio-core") == "0.6.1", "Install the pinned core 0.6.1")
     if PRODUCT == "score-matter":
         requirements = importlib.metadata.requires("score-matter") or []
         require(any("matter-audio-core" in item and "audio" in item for item in requirements),
@@ -36,7 +36,7 @@ def main():
     for directory, pattern in [('tests', 'test_audio.py'), ('tests', 'test_sa3_edit.py'),
                                ('tests', 'test_candidate_registration.py'), ('tests', 'test_music_annotations.py'),
                                ('tests', 'test_music_arrangements.py'), ('tests', 'test_music_transitions.py'),
-                               ('tests', 'test_music_arrangement_annotations.py')]:
+                               ('tests', 'test_music_arrangement_annotations.py'), ('tests', 'test_music_publication.py')]:
         suite.addTests(loader.discover(str(ROOT / directory), pattern=pattern))
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
     require(outcome.wasSuccessful() and not outcome.skipped, "Shared audio tests must pass without skips")
@@ -74,7 +74,7 @@ def main():
             return result["outputs"][0]
 
         capabilities = call("capabilities")
-        require(capabilities["product"] == PRODUCT and capabilities["core_version"] == "0.6.0", "Wrong product/core routing")
+        require(capabilities["product"] == PRODUCT and capabilities["core_version"] == "0.6.1", "Wrong product/core routing")
         require({"normalize/v1", "loop/v1", "scene/v1", "analyze/v1"}.issubset(
             {item["operation"] for item in capabilities["operations"]}), "M4 operations are missing")
         require(capabilities["cue_sets"]["availability"] == capabilities["library"]["availability"] == "available",
@@ -350,7 +350,7 @@ def main():
                 and matches["items"][0]["distance"] == 0, "Measured search returned unexpected results")
         require(source.read_bytes() == original, "Authoring modified the original source")
 
-    print(json.dumps({"status": "passed", "product": PRODUCT, "core_version": "0.6.0", "adapter_tests": outcome.testsRun,
+    print(json.dumps({"status": "passed", "product": PRODUCT, "core_version": "0.6.1", "adapter_tests": outcome.testsRun,
                       "cli_calls": calls, "exported_wavs": 3 if PRODUCT == "score-matter" else 2, "exact_export_bytes": True,
                       "music_coordinates": "explicit_grid_and_immutable_plan", "loop_period_accounts_for_overlap": True,
                       "music_splice": "equal_frames_exact_outside_pcm_no_automatic_selection",

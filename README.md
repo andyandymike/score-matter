@@ -144,4 +144,4 @@ MIT merely by passing through ScoreMatter.
 
 ## Shared audio tools
 
-The optional [shared audio entry point](docs/shared-audio.md) provides editing, protected sessions, loops, scene timelines, cue packages and local search through the shared core 0.6.0. It also exposes the existing configured local SA3 inpainting runtime. Follow the pinned installation and zero-model verification steps before use.
+The optional [shared audio entry point](docs/shared-audio.md) provides editing, protected sessions, loops, scene timelines, cue packages and local search through the shared core 0.6.1. It also exposes the existing configured local SA3 inpainting runtime. Follow the pinned installation and zero-model verification steps before use.

@@ -6,7 +6,8 @@ from matter_audio_core.contracts import object_schema, parse_json, validate
 from matter_audio_core.errors import AudioError
 
 from .music import ASSET_ID, IDENTIFIER, ROUNDING, _audio, _ref, resolve_position
-from .music_arrangement import _publication_budget, load as load_arrangement
+from .music_arrangement import load as load_arrangement
+from .music_publication import validated_producer
 from .music_validation import MAX_ANCESTRY, derived_annotation_level, validation_scope
 
 
@@ -81,20 +82,14 @@ def _build(store, request):
         "audio": audio, "timing": timing, "resolved_regions": resolved, "mappings": mappings, "rounding": ROUNDING}
     parents = [{"role": "annotates", **_ref(audio)}, {"role": "arrangement_plan", **_ref(plan_record)}]
     binding = {"operation": "score.music.annotate_arrangement/v1", "document": document}
-    data = _publication_budget(store, binding, document, parents, LIMITATIONS)
-    return binding, document, parents, data
+    produce = validated_producer(store, request["request_id"], binding, document, "music_annotation", parents, LIMITATIONS)
+    return binding, document, parents, produce
 
 
 def annotate_arrangement(store: ArtifactStore, request):
     # Reserve the new annotation's own level before claiming its publication.
     with derived_annotation_level():
-        binding, document, parents, data = _build(store, request)
-
-    def produce(publication):
-        output = publication.add(data, {"kind": "music_annotation", "content_type": "application/json"},
-                                 role="music_annotation", parents=parents)
-        return {"annotation": output, "document": document, "limitations": LIMITATIONS}
-
+        binding, _, _, produce = _build(store, request)
     return store.transact(request["request_id"], binding, produce)
 
 
