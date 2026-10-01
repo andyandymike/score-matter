@@ -151,6 +151,22 @@ class MusicAnnotationTests(unittest.TestCase):
     def groups(self):
         return len(list((self.workspace / "objects").iterdir()))
 
+    def replacement(self, *, identifier="replacement", start=700, end=1100,
+                    frames=2000, rate=8000, channels=1, timing=None, regions=None):
+        pcm = PCM(sample_bytes(array("h", [(2000 + i % 997) * (1 if channel == 0 else -1)
+                  for i in range(frames) for channel in range(channels)])), rate, channels)
+        path = self.root / (identifier + ".wav")
+        path.write_bytes(encode_wav(pcm))
+        audio = self.store.import_wav(path, identifier)["outputs"][0]
+        annotation = self.annotation(request_id=identifier + "-annotation", asset_id=audio["asset_id"],
+            timing={"mode": "free"} if timing is None else timing,
+            regions=[region("replacement", {"frame": start}, {"frame": end})] if regions is None else regions)
+        return audio, annotation, pcm
+
+    def splice_target(self, annotation, **changes):
+        return {"kind": "splice", "replacement": {"annotation_id": annotation["outputs"][0]["asset_id"],
+                "region_id": "replacement"}, "transition_frames": 0, **changes}
+
     def test_cli_discovers_and_preserves_immutable_annotation_with_exact_audio_binding(self):
         code, capability = self.call("capabilities")
         self.assertEqual(code, 0)
@@ -498,6 +514,206 @@ class MusicAnnotationTests(unittest.TestCase):
                     target={"kind": "loop", "crossfade_frames": 64,
                             "protection": {"session_id": "music", "revision": revision}})
             self.assertEqual(caught.exception.code, "constraint_violation")
+
+    def test_splice_plan_binds_both_exact_assets_and_annotations(self):
+        original = self.annotation()
+        replacement_audio, replacement, _ = self.replacement()
+        target = self.splice_target(replacement)
+        prepared = self.prepare(original, target=target)
+        document = show(self.store, prepared["outputs"][0]["asset_id"])["document"]
+        self.assertEqual(document["audio"]["asset_id"], self.audio["asset_id"])
+        self.assertEqual(document["audio"]["digest"], self.audio["digest"])
+        self.assertEqual(document["annotation"], {key: original["outputs"][0][key] for key in ("asset_id", "digest")})
+        self.assertEqual(document["replacement"]["audio"], {key: replacement_audio[key] for key in ("asset_id", "digest", "media")})
+        self.assertEqual(document["replacement"]["annotation"],
+                         {key: replacement["outputs"][0][key] for key in ("asset_id", "digest")})
+        self.assertEqual(document["core_request"]["inputs"], [self.audio["asset_id"], replacement_audio["asset_id"]])
+        self.assertEqual({p["role"] for p in prepared["outputs"][0]["parents"]},
+                         {"annotation", "source", "replacement_annotation", "replacement_source"})
+        self.assertEqual(self.prepare(original, target=target), prepared)
+        # Same samples and same named range still cannot silently substitute a
+        # different declaration under a completed plan request ID.
+        alternate = self.annotation(request_id="alternate-replacement", asset_id=replacement_audio["asset_id"],
+            source="project", timing={"mode": "free"},
+            regions=[region("replacement", {"frame": 700}, {"frame": 1100})])
+        with self.assertRaises(AudioError) as caught:
+            self.prepare(original, target=self.splice_target(alternate))
+        self.assertEqual(caught.exception.code, "request_conflict")
+        alternate_original = self.annotation(request_id="alternate-original", source="project")
+        with self.assertRaises(AudioError) as caught:
+            self.prepare(alternate_original, target=target)
+        self.assertEqual(caught.exception.code, "request_conflict")
+
+    def test_splice_nonzero_replacement_offset_preserves_every_sample_outside_named_region(self):
+        self.create_session()
+        _, replacement, replacement_pcm = self.replacement()
+        prepared = self.prepare(target=self.splice_target(replacement))
+        count = self.groups()
+        plan_id = prepared["outputs"][0]["asset_id"]
+        self.assertEqual(show(self.store, plan_id)["document"]["core_request"]["parameters"]["replacement_start_frame"], 700)
+        result = execute(self.store, plan_id)
+        self.assertEqual(self.groups(), count + 1)
+        output = result["outputs"][0]
+        pcm = decode_wav(self.store.asset(output["asset_id"])[1])
+        expected = self.pcm.payload[:200] + replacement_pcm.payload[1400:2200] + self.pcm.payload[1000:]
+        self.assertEqual(pcm.payload, expected)
+        self.assertEqual(pcm.frames, self.pcm.frames)
+        self.assertEqual(result["findings"][0]["observed_changes"]["outside_changed_sample_count"], 0)
+        self.assertEqual(result["music_replacement_annotation"]["asset_id"], replacement["outputs"][0]["asset_id"])
+        self.assertEqual([item["role"] for item in result["outputs"]], ["audio"])
+        self.assertEqual(result["audio_model_calls"], 0)
+        self.assertEqual(execute(self.store, plan_id), result)
+        with self.assertRaises(AudioError):
+            show(self.store, output["asset_id"])
+        context = self.call("context", "show", "music")[1]
+        self.assertEqual(context["current"]["revision"], 1)
+        self.assertEqual(context["current"]["selected_asset"]["asset_id"], self.audio["asset_id"])
+        self.assertEqual(context["feedback"], [])
+
+    def test_splice_transition_edges_and_interior_preserve_stereo_signs(self):
+        assets = []
+        for name, value in (("edge-base", 100), ("edge-replacement", 1000)):
+            path = self.root / (name + ".wav")
+            path.write_bytes(encode_wav(PCM(sample_bytes(array("h", [value, -value] * 12)), 8000, 2)))
+            assets.append(self.store.import_wav(path, name)["outputs"][0])
+        original = self.annotation(request_id="edge-base-annotation", asset_id=assets[0]["asset_id"],
+                                  regions=[region(start={"frame": 2}, end={"frame": 10})])
+        replacement = self.annotation(request_id="edge-replacement-annotation", asset_id=assets[1]["asset_id"],
+            regions=[region("replacement", {"frame": 3}, {"frame": 11})])
+        prepared = self.prepare(original, target=self.splice_target(replacement, transition_frames=3))
+        result = execute(self.store, prepared["outputs"][0]["asset_id"])
+        pcm = decode_wav(self.store.asset(result["outputs"][0]["asset_id"])[1])
+        expected = [100, 100, 100, 550, 1000, 1000, 1000, 1000, 550, 100, 100, 100]
+        self.assertEqual(list(pcm.samples())[::2], expected)
+        self.assertEqual(list(pcm.samples())[1::2], [-value for value in expected])
+        self.assertEqual(result["findings"][0]["observed_changes"]["outside_changed_sample_count"], 0)
+
+    def test_splice_rejects_both_longer_and_shorter_complete_replacement_regions(self):
+        original = self.annotation()
+        for length in (399, 401):
+            _, replacement, _ = self.replacement(identifier="length-" + str(length), end=700 + length)
+            count = self.groups()
+            with self.subTest(length=length), self.assertRaises(AudioError) as caught:
+                self.prepare(original, request_id="mismatch-" + str(length), target=self.splice_target(replacement))
+            self.assertEqual(caught.exception.code, "music_splice_length_mismatch")
+            self.assertEqual(self.groups(), count)
+
+    def test_splice_compares_frames_not_bar_counts_or_tempo_labels(self):
+        bar = [region("phrase", {"bar": 1, "beat": "1"}, {"bar": 2, "beat": "1"})]
+        original = self.annotation(regions=bar)
+        audio, replacement, _ = self.replacement(frames=40000, timing=fixed(bpm="60"),
+            regions=[region("replacement", {"bar": 1, "beat": "1"}, {"bar": 2, "beat": "1"})])
+        with self.assertRaises(AudioError) as caught:
+            self.prepare(original, target=self.splice_target(replacement))
+        self.assertEqual(caught.exception.code, "music_splice_length_mismatch")
+        # Two quarter notes at 60 BPM equal four quarter notes at 120 BPM.
+        equal = self.annotation(request_id="equal-duration", asset_id=audio["asset_id"], timing=fixed(bpm="60"),
+            regions=[region("replacement", {"bar": 1, "beat": "1"}, {"bar": 1, "beat": "3"})])
+        prepared = self.prepare(original, target=self.splice_target(equal))
+        result = execute(self.store, prepared["outputs"][0]["asset_id"])
+        self.assertEqual(result["outputs"][0]["media"]["frame_count"], self.pcm.frames)
+
+    def test_splice_rejects_format_conversion_and_invalid_replacement_targets(self):
+        original = self.annotation()
+        for name, rate, channels in (("rate", 16000, 1), ("channels", 8000, 2)):
+            _, replacement, _ = self.replacement(identifier=name, rate=rate, channels=channels)
+            with self.subTest(name=name), self.assertRaises(AudioError) as caught:
+                self.prepare(original, target=self.splice_target(replacement))
+            self.assertEqual(caught.exception.code, "music_splice_format_mismatch")
+        audio, replacement, _ = self.replacement()
+        targets = [
+            (self.splice_target(replacement, replacement={"annotation_id": audio["asset_id"], "region_id": "replacement"}), "invalid_music_annotation"),
+            (self.splice_target(replacement, replacement={"annotation_id": replacement["outputs"][0]["asset_id"], "region_id": "missing"}), "music_region_not_found"),
+            (self.splice_target(replacement, transition_frames=-1), "invalid_request"),
+            (self.splice_target(replacement, transition_frames=0.5), "invalid_request"),
+            (self.splice_target(replacement, transition_frames=201), "fade_overlap"),
+        ]
+        count = self.groups()
+        for target, error in targets:
+            with self.subTest(target=target), self.assertRaises(AudioError) as caught:
+                self.prepare(original, target=target)
+            self.assertEqual(caught.exception.code, error)
+            self.assertEqual(self.groups(), count)
+
+    def test_splice_respects_base_protection_and_replays_finished_work_after_policy_changes(self):
+        self.create_session()
+        self.locks([(0, 50)])
+        original = self.annotation()
+        _, replacement, _ = self.replacement()
+        target = self.splice_target(replacement, transition_frames=3, protection={"session_id": "music", "revision": 2})
+        done_plan = self.prepare(original, request_id="done-splice", target=target)
+        waiting = self.prepare(original, request_id="waiting-splice", target=target)
+        done = execute(self.store, done_plan["outputs"][0]["asset_id"])
+        self.assertEqual(done["findings"][0]["protection"]["status"], "verified")
+        self.locks([(0, 50), (200, 250)], revision=2, request_id="new-splice-lock")
+        count = self.groups()
+        with self.assertRaises(AudioError) as caught:
+            execute(self.store, waiting["outputs"][0]["asset_id"])
+        self.assertEqual(caught.exception.code, "constraint_conflict")
+        self.assertEqual(self.groups(), count)
+        self.assertEqual(execute(self.store, done_plan["outputs"][0]["asset_id"]), done)
+        with self.assertRaises(AudioError) as caught:
+            self.prepare(original, request_id="overlap-lock",
+                target={**target, "protection": {"session_id": "music", "revision": 3}})
+        self.assertEqual(caught.exception.code, "constraint_violation")
+        self.assertEqual(self.sessions.show("music")["current"]["selected_asset"]["asset_id"], self.audio["asset_id"])
+
+    def test_splice_saved_replacement_references_and_ranges_cannot_be_substituted(self):
+        _, replacement, _ = self.replacement()
+        prepared = self.prepare(target=self.splice_target(replacement))
+        original = show(self.store, prepared["outputs"][0]["asset_id"])["document"]
+        cases = [
+            (("replacement", "annotation", "asset_id"), self.audio["asset_id"]),
+            (("replacement", "annotation", "digest"), {"algorithm": "sha256", "hex": "0" * 64}),
+            (("replacement", "audio", "asset_id"), self.audio["asset_id"]),
+            (("replacement", "audio", "digest"), {"algorithm": "sha256", "hex": "0" * 64}),
+            (("replacement", "region", "start_frame"), 701),
+            (("replacement", "region", "end_frame"), 1101),
+            (("core_request", "parameters", "replacement_start_frame"), 701),
+        ]
+        for index, (keys, value) in enumerate(cases):
+            document = copy.deepcopy(original)
+            target = document
+            for key in keys[:-1]:
+                target = target[key]
+            target[keys[-1]] = value
+
+            def publish(publication):
+                publication.add(canonical(document), {"kind": "music_plan", "content_type": "application/json"}, role="music_plan")
+                return {}
+
+            forged = self.store.transact("forged-splice-" + str(index), {"fixture": index}, publish)
+            count = self.groups()
+            for operation in (show, execute):
+                with self.subTest(keys=keys, operation=operation.__name__), self.assertRaises(AudioError) as caught:
+                    operation(self.store, forged["outputs"][0]["asset_id"])
+                self.assertEqual(caught.exception.code, "music_binding_mismatch")
+            self.assertEqual(self.groups(), count)
+
+    def test_splice_reload_rejects_corrupted_replacement_annotation_before_execution(self):
+        _, replacement, _ = self.replacement()
+        prepared = self.prepare(target=self.splice_target(replacement))
+        metadata = replacement["outputs"][0]
+        (self.workspace / metadata["locator"]).write_bytes(b"{}")
+        count = self.groups()
+        for operation in (show, execute):
+            with self.subTest(operation=operation.__name__), self.assertRaises(AudioError) as caught:
+                operation(self.store, prepared["outputs"][0]["asset_id"])
+            self.assertEqual(caught.exception.code, "integrity_error")
+        self.assertEqual(self.groups(), count)
+
+    def test_existing_target_bindings_and_results_do_not_gain_replacement_fields(self):
+        self.create_session()
+        annotation = self.annotation()
+        for target in ({"kind": "trim"}, {"kind": "loop", "crossfade_frames": 0},
+                       {"kind": "constraints", "session_id": "music", "expected_revision": 1}):
+            prepared = self.prepare(annotation, request_id="old-" + target["kind"], target=target)
+            self.assertEqual(set(prepared["binding"]), {"operation", "request", "annotation", "audio"})
+            self.assertNotIn("replacement", prepared["document"])
+            self.assertEqual(prepared["document"]["core_request"]["request_id"],
+                             "music-" + fingerprint(prepared["binding"])["hex"])
+            result = execute(self.store, prepared["outputs"][0]["asset_id"])
+            self.assertNotIn("music_replacement_annotation", result)
 
 
 if __name__ == "__main__":

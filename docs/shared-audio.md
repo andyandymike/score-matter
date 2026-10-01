@@ -254,12 +254,71 @@ and removed frames. An overlap shortens the loop, so its period is not necessari
 the original number of bars. Neither zero overlap nor crossfading guarantees a
 musically seamless result.
 
-Execution delegates the frozen request to Core's existing trim/loop operations
+Execution delegates the frozen request to Core's existing trim/loop/splice operations
 with the saved resolution digest. It returns playable audio in `outputs`, keeps
 the plan and annotation references, and preserves Core failure status. Select
 the output into a session separately using the current observed revision.
 Capabilities expose the full annotation and plan request schemas under
 `product_capabilities.music`.
+
+### Replace one named region with another
+
+A splice plan replaces one region of a base asset with one complete region
+from another annotation. Both can also refer to different regions of the same
+audio asset. For example, save `splice-plan.json` to replace the base `bridge`
+with the replacement `bridge`:
+
+```json
+{
+  "schema": "score-music-plan/v1",
+  "request_id": "music-splice-plan-001",
+  "annotation_id": "BASE_ANNOTATION_ID",
+  "region_ids": ["bridge"],
+  "target": {
+    "kind": "splice",
+    "replacement": {
+      "annotation_id": "REPLACEMENT_ANNOTATION_ID",
+      "region_id": "bridge"
+    },
+    "transition_frames": 0
+  }
+}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace music plan --request splice-plan.json --json
+python -m score_matter audio --workspace .local/audio-workspace music show PLAN_ID --json
+python -m score_matter audio --workspace .local/audio-workspace music execute PLAN_ID --json
+```
+
+Create both annotations first and substitute their actual IDs. A plan accepts
+exactly one base region and one replacement region. The two complete regions
+must resolve to **exactly equal frame counts**, and the audio must share sample
+rate and channel count. Equal bar counts alone are insufficient: different BPMs
+can produce different durations. A longer or shorter replacement is rejected;
+there is no implicit cropping, padding, resampling or time stretching. Free and
+unknown timing still work through explicit frame/second marks.
+
+The plan freezes both annotation/audio identities and digests, the complete
+named replacement window and its coordinate errors, and a Core `splice/v1`
+request with the base and replacement as its two audio inputs. `music show` and
+`music execute` reload and verify both bindings. The execution response retains
+`music_annotation` for the base and adds `music_replacement_annotation`; the
+immutable plan contains the full relationship. Existing trim/loop/constraints
+plan identities and saved plans remain compatible.
+
+`transition_frames` is required and applies equally at both ends **inside** the
+base write window. Zero performs a direct replacement; each nonzero transition
+must fit without overlapping the other. A one-frame transition preserves its
+outer base sample, following Core's existing splice rule. The output preserves
+the base's total frame count and all PCM outside the target window. Transition
+and change measurements do not prove that the edit is musically seamless.
+
+An optional `target.protection` binds the base session's Core policy; it does
+not reinterpret the replacement as the protected selection. Protected overlaps
+are rejected before rendering. Explicitly select any accepted result afterward;
+neither source annotation is automatically transferred to the new audio. This
+operation calls no model and makes no claim about matching harmony or rhythm.
 
 ### Add protection without removing existing locks
 
@@ -278,7 +337,7 @@ the complete resulting constraints request; execution does not recalculate it
 against a newer selection. An outdated revision fails before any new lock change.
 Removing locks remains an explicit Core constraints operation.
 
-Subsequent trim/loop plans can include a Core protection reference in `target`,
+Subsequent trim/loop/splice plans can include a Core protection reference in `target`,
 for example `"protection":{"session_id":"exploration","revision":3}` after
 the lock mutation advances that session. Core rejects operations that discard or
 modify protected PCM; extracting only the loop would therefore fail if it removes
@@ -297,12 +356,12 @@ transaction spanning all three steps.
 Replaying the same annotate or plan request returns its original saved result;
 changing its inputs under that ID conflicts. Repeating `music execute PLAN_ID`
 returns its completed receipt even after later session changes. The plan's
-`core_request.request_id` can also be queried with `action show` for trim/loop,
+`core_request.request_id` can also be queried with `action show` for trim/loop/splice,
 or `session request` for constraints. An unfinished action claim remains
 `recovery_pending`; execution never invents a replacement ID or regenerates audio.
 The saved plan continues to link the annotation to the Core request even when
 that request is queried directly through the Core commands. If executing the
-frozen trim/loop request directly, also pass its saved digest with Core's
+frozen trim/loop/splice request directly, also pass its saved digest with Core's
 `--expected-resolution-digest`; `music execute` supplies this check for you.
 
 ## Shared operations and continued work

@@ -166,6 +166,37 @@ def main():
             require(music_context["current"]["selected_asset"]["asset_id"] == asset["asset_id"]
                     and music_context["feedback"] == [], "Music planning selected an edit or invented listening feedback")
 
+            replacement_source = root / "replacement.wav"
+            replacement_bytes = encode_wav(PCM(sample_bytes(array("h", [1500 + i % 500 for i in range(10000)])), 8000, 1))
+            replacement_source.write_bytes(replacement_bytes)
+            replacement_audio = call("candidate", "register", "--audio", replacement_source,
+                                     "--request-id", "replacement-input")["outputs"][0]
+            replacement_annotation = write(["music", "annotate"], {
+                "schema": "score-music-annotate/v1", "request_id": "replacement-annotation",
+                "asset_id": replacement_audio["asset_id"], "source": "agent", "timing": {"mode": "free"},
+                "regions": [{"id": "alternate", "start": {"frame": 500}, "end": {"frame": 4500}}]})
+            splice_plan = write(["music", "plan"], {**trim_request, "request_id": "music-splice-plan",
+                "target": {"kind": "splice", "transition_frames": 0,
+                           "replacement": {"annotation_id": replacement_annotation["outputs"][0]["asset_id"],
+                                           "region_id": "alternate"}}})
+            splice_id = splice_plan["outputs"][0]["asset_id"]
+            splice_document = call("music", "show", splice_id)["document"]
+            require(splice_document["core_request"]["inputs"] == [asset["asset_id"], replacement_audio["asset_id"]]
+                    and splice_document["replacement"]["audio"]["digest"] == replacement_audio["digest"],
+                    "Splice plan lost one of its exact source bindings")
+            splice_result = call("music", "execute", splice_id)
+            splice_audio = splice_result["outputs"][0]
+            expected_pcm = decode_wav(replacement_bytes).payload[1000:9000] + decode_wav(original).payload[8000:]
+            require(decode_wav((workspace / splice_audio["locator"]).read_bytes()).payload == expected_pcm
+                    and splice_audio["media"]["frame_count"] == 8000, "Named splice changed PCM outside its window or adapted duration")
+            require(splice_result["audio_model_calls"] == 0
+                    and splice_result["findings"][0]["observed_changes"]["outside_changed_sample_count"] == 0,
+                    "Named splice must be a bounded zero-model operation")
+            require(call("music", "execute", splice_id) == splice_result, "Splice replay changed its receipt")
+            call("music", "show", splice_audio["asset_id"], expected_error="invalid_music_plan")
+            require(call("context", "show", "music-check") == music_context, "Splice selected its output or altered session metadata")
+            require(replacement_source.read_bytes() == replacement_bytes, "Splice changed the replacement source")
+
         write(["session", "create"], {"schema": "matter-session-create/v1", "request_id": "session-create",
               "session_id": "check", "name": "Engineering fixture"})
         selection = {"schema": "matter-session-select/v1", "request_id": "select-input", "session_id": "check",
@@ -214,6 +245,7 @@ def main():
     print(json.dumps({"status": "passed", "product": PRODUCT, "core_version": "0.6.0", "adapter_tests": outcome.testsRun,
                       "cli_calls": calls, "exported_wavs": 2, "exact_export_bytes": True,
                       "music_coordinates": "explicit_grid_and_immutable_plan", "loop_period_accounts_for_overlap": True,
+                      "music_splice": "equal_frames_exact_outside_pcm_no_automatic_selection",
                       "audio_model_calls": 0, "human_listening": "not_performed"}))
     return 0
 

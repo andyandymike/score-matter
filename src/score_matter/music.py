@@ -44,6 +44,10 @@ TARGET_SCHEMA = {"oneOf": [
     object_schema({"kind": {"const": "loop"}, "crossfade_frames": FRAME_COUNT,
                    "curve": {"enum": ["linear", "equal_power"]}, "clip": {"enum": ["reject", "saturate"]},
                    "protection": PROTECTION_REF}, ["kind", "crossfade_frames"]),
+    object_schema({"kind": {"const": "splice"},
+                   "replacement": object_schema({"annotation_id": ASSET_ID, "region_id": IDENTIFIER}),
+                   "transition_frames": FRAME_COUNT, "protection": PROTECTION_REF},
+                  ["kind", "replacement", "transition_frames"]),
     object_schema({"kind": {"const": "constraints"}, "session_id": IDENTIFIER, "expected_revision": REVISION}),
 ]}
 PLAN_SCHEMA = object_schema({
@@ -58,6 +62,7 @@ LIMITATIONS = [
     "Constraints plans only add locks; removing locks requires the explicit Core constraints workflow.",
     "Annotations are bound to one exact asset and are not inherited by edited outputs.",
     "Loop overlap shortens the period; successful execution does not establish musical or listening acceptance.",
+    "Splice requires equal resolved region lengths and matching sample rate/channels; it never truncates, resamples or time-stretches a replacement.",
     "Protection references retain Core constraint-set semantics; they do not require the latest selection revision.",
 ]
 
@@ -70,6 +75,8 @@ def capabilities():
         "coordinates": "One-based bars and beats; beat unit is the meter denominator; half-open regions",
         "metadata_roles": ["music_annotation", "music_plan"], "constraints_mode": "add_only_union",
         "execution_identity": "music- plus SHA-256 of plan request and exact annotation/audio references",
+        "splice": {"length_rule": "equal_resolved_frame_count", "format_rule": "same_sample_rate_and_channels",
+                   "protection_target": "base", "transition_rule": "inside_target_window_without_overlap"},
         "limitations": LIMITATIONS}}
 
 
@@ -177,10 +184,26 @@ def _plan_base(store, request):
     if any(name not in lookup for name in request["region_ids"]):
         raise AudioError("music_region_not_found", "Requested region is absent from this exact annotation")
     if request["target"]["kind"] != "constraints" and len(request["region_ids"]) != 1:
-        raise AudioError("invalid_music_plan", "Trim and loop plans accept exactly one region")
+        raise AudioError("invalid_music_plan", "Trim, loop and splice plans accept exactly one base region")
     binding = {"operation": "score.music.plan/v1", "request": request,
                "annotation": _ref(record), "audio": annotation["audio"]}
-    return binding, [lookup[name] for name in request["region_ids"]]
+    regions = [lookup[name] for name in request["region_ids"]]
+    if request["target"]["kind"] == "splice":
+        replacement = request["target"]["replacement"]
+        other_record, other = _load_annotation(store, replacement["annotation_id"])
+        other_region = next((region for region in other["resolved_regions"] if region["id"] == replacement["region_id"]), None)
+        if other_region is None:
+            raise AudioError("music_region_not_found", "Replacement region is absent from this exact annotation")
+        if any(annotation["audio"]["media"][key] != other["audio"]["media"][key] for key in ("sample_rate_hz", "channels")):
+            raise AudioError("music_splice_format_mismatch", "Base and replacement must share sample rate and channels")
+        base_frames = regions[0]["end_frame"] - regions[0]["start_frame"]
+        replacement_frames = other_region["end_frame"] - other_region["start_frame"]
+        if base_frames != replacement_frames:
+            raise AudioError("music_splice_length_mismatch", "Complete named regions must resolve to exactly equal frame lengths",
+                             details={"base_frames": base_frames, "replacement_frames": replacement_frames})
+        # Keep legacy bindings byte-for-byte equivalent: only splice adds this snapshot.
+        binding["replacement"] = {"annotation": _ref(other_record), "audio": other["audio"], "region": other_region}
+    return binding, regions
 
 
 def _union(regions):
@@ -209,6 +232,10 @@ def _core_request(binding, regions, existing=()):
                "inputs": [binding["audio"]["asset_id"]], "parameters": windows[0]}
     if target["kind"] == "loop":
         request["parameters"].update({key: target[key] for key in ("crossfade_frames", "curve", "clip") if key in target})
+    elif target["kind"] == "splice":
+        request["inputs"].append(binding["replacement"]["audio"]["asset_id"])
+        request["parameters"].update({"replacement_start_frame": binding["replacement"]["region"]["start_frame"],
+                                      "transition_frames": target["transition_frames"]})
     if "protection" in target:
         request["protection"] = target["protection"]
     return request
@@ -251,6 +278,8 @@ def plan(store: ArtifactStore, request):
                 "annotation": binding["annotation"], "audio": binding["audio"],
                 "resolved_regions": regions, "rounding": ROUNDING}
     target = request["target"]
+    if target["kind"] == "splice":
+        document["replacement"] = binding["replacement"]
     if target["kind"] == "constraints":
         service = SessionService(store)
         context = service.show(target["session_id"])
@@ -267,8 +296,11 @@ def plan(store: ArtifactStore, request):
         document["expected_resolution_digest"] = document["core_resolution"]["digest"]["hex"]
         if target["kind"] == "loop":
             document["loop"] = _loop_period(document["core_resolution"], binding["audio"])
-    return _publish(store, request["request_id"], binding, document, "music_plan",
-                    [{"role": "annotation", **binding["annotation"]}, {"role": "source", **_ref(binding["audio"])}])
+    parents = [{"role": "annotation", **binding["annotation"]}, {"role": "source", **_ref(binding["audio"])}]
+    if target["kind"] == "splice":
+        parents.extend([{"role": "replacement_annotation", **binding["replacement"]["annotation"]},
+                        {"role": "replacement_source", **_ref(binding["replacement"]["audio"])}])
+    return _publish(store, request["request_id"], binding, document, "music_plan", parents)
 
 
 def _load_plan(store, asset_id):
@@ -280,6 +312,7 @@ def _load_plan(store, asset_id):
         raise AudioError("invalid_music_plan", "Expected a saved music plan asset")
     binding, regions = _plan_base(store, document["request"])
     if (document["annotation"] != binding["annotation"] or document["audio"] != binding["audio"]
+            or document.get("replacement") != binding.get("replacement")
             or document["resolved_regions"] != regions or document["rounding"] != ROUNDING
             or document["core_request"] != _core_request(binding, regions, document.get("existing_regions", []))):
         raise AudioError("music_binding_mismatch", "Plan does not match its annotation, audio or frozen Core request")
@@ -323,7 +356,10 @@ def execute(store: ArtifactStore, plan_asset_id):
         else:
             if result["binding"] != {"resolution": document["core_resolution"]}:
                 raise AudioError("request_conflict", "Execution ID already binds a different Core resolution")
-    return {**result, "music_plan": _ref(record), "music_annotation": document["annotation"]}
+    references = {"music_plan": _ref(record), "music_annotation": document["annotation"]}
+    if document["request"]["target"]["kind"] == "splice":
+        references["music_replacement_annotation"] = document["replacement"]["annotation"]
+    return {**result, **references}
 
 
 def extend_parser(parser):
