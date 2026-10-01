@@ -46,8 +46,8 @@ wheels, use `python -m pip install --find-links .local/audio-wheels -e ".[audio]
 instead to keep local source edits live while refreshing metadata.
 
 The verification script requires every adapter test to pass without skips. It
-uses fresh installed CLIs with synthetic PCM to check
-normalization, loops, scene rendering, revision-bound cue exports and local
+uses fresh installed CLIs with synthetic PCM to check candidate registration,
+explicit revision-checked session selection, normalization, loops, scene rendering, revision-bound cue exports and local
 search, including original and exported bytes. It calls no model and plays no
 audio. Windows and Linux run this as a required CI job.
 
@@ -67,6 +67,97 @@ Use the actual returned ID for `ASSET_ID` and request inputs. `gain.json` contai
 
 Import preserves an immutable snapshot and records unknown external rights;
 it does not grant distribution rights or establish listening approval.
+
+## Register an existing generated candidate
+
+Register a WAV from `generate` after generation has completed. This step uses
+existing files and calls no model:
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace candidate register --audio candidate.wav --generation-record candidate.generation.json --intent intent.json --request-id register-001 --json
+```
+
+`--generation-record` and `--intent` are optional. Use the actual generation
+record path returned by `generate`; registration does not search for a sidecar.
+An example `intent.json` is:
+
+```json
+{"schema":"score-music-intent/v1","source":"user","purpose":"Quiet exploration music","preserve":["Restrained dynamics"],"change":["Leave room for dialogue"]}
+```
+
+The intent requires `schema`, `source` (`user`, `agent`, `project` or `unknown`)
+and `purpose`; `preserve`, `change` and `notes` are optional. Keep the actual
+source of the intent. This records desired authoring choices, not human listening
+feedback, musical consistency or approval. Exact schemas, file arguments and
+validation limits are exposed in `capabilities --json` under
+`product_capabilities.candidate_registration`.
+
+Registration validates the existing PCM16 WAV. If a generation record is
+supplied, its SHA-256 and media facts must match that WAV. The record's historical
+output path is not opened, so an unchanged WAV and record can be moved together.
+This check binds the record to audio bytes; it does not authenticate historical
+claims, verify model weights or establish rights. Without a record, origin stays
+unknown. For older WAVs with no metadata, use `assets import`; registration with
+neither optional file delegates to that same import operation.
+
+The `matter-result/v1` result contains the registered audio at
+`outputs[0].asset_id`. The supplied original JSON bytes become immutable
+`generation_record` and `music_intent` attachments in the same publication as the
+unchanged WAV. Attachment digests are recorded on the audio and each attachment
+references that audio. You can use the returned audio ID in existing actions,
+sessions and cue variants.
+
+### Select the candidate explicitly
+
+Registration does not create a session, change an existing selection or add
+feedback. Create a session separately with `create-session.json`:
+
+```json
+{"schema":"matter-session-create/v1","request_id":"create-music-001","session_id":"exploration","name":"Exploration music"}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace session create --request create-session.json --json
+python -m score_matter audio --workspace .local/audio-workspace context show exploration --json
+```
+
+The new empty session is at revision 1. Put the actual registered audio ID in
+`select-candidate.json`:
+
+```json
+{"schema":"matter-session-select/v1","request_id":"select-music-001","session_id":"exploration","expected_revision":1,"asset_id":"ASSET_ID"}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace session select --request select-candidate.json --json
+```
+
+Selection advances the revision. Replaying the same request returns its saved
+receipt. A new selection request using the old revision fails with
+`revision_conflict` and leaves the current selection intact. For an existing
+session, read its context first and use the observed revision; explicitly decide
+whether to replace its selected candidate.
+
+### Retry or inspect registration
+
+Registration request IDs are distinct from the later session request IDs. When
+either metadata file is supplied, reuse the same registration ID with identical
+input bytes to retrieve the saved result, even after moving those files; changed
+bytes conflict. With neither metadata file, the generic import fallback also
+binds the source path, so keep that path unchanged for same-ID retries.
+Even JSON whitespace is part of the saved
+attachment identity. Invalid metadata or a record mismatch is rejected before
+claiming the request, so it can be corrected and retried. After successful
+publication, query the saved result even if the original files have been removed:
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace action show register-001 --json
+```
+
+An interrupted publication can leave the core request in `recovery_pending`.
+Registration does not automatically reclaim that request, select a different ID
+or regenerate audio. Inspect the saved request and workspace before taking a
+recovery action; retrying the pending request alone does not complete it.
 
 ## Shared operations and continued work
 
