@@ -5,8 +5,10 @@ from matter_audio_core.actions import ActionService
 from matter_audio_core.artifacts import ArtifactStore
 from matter_audio_core.contracts import MAX_JSON_BYTES, canonical, fingerprint, object_schema, parse_json, validate
 from matter_audio_core.errors import AudioError
+from matter_audio_core.fades import FRAME_COUNT
 
 from .music import ASSET_ID, IDENTIFIER, _load_annotation, _ref
+from .music_validation import checked_asset, validation_scope
 
 
 ROLE = "music_arrangement"
@@ -18,6 +20,14 @@ SEGMENT_SCHEMA = object_schema({"id": IDENTIFIER, "annotation_id": ASSET_ID, "re
                                 "repeat": {"type": "integer", "minimum": 1, "maximum": LIMITS["repeat"]}})
 ARRANGE_SCHEMA = object_schema({"schema": {"const": "score-music-arrange/v1"}, "request_id": IDENTIFIER,
     "segments": {"type": "array", "minItems": 1, "maxItems": LIMITS["segments"], "items": SEGMENT_SCHEMA}})
+TRANSITION_SCHEMA = object_schema({"after_segment_id": IDENTIFIER,
+    "after_repeat_index": {"type": "integer", "minimum": 0, "maximum": 63},
+    "crossfade_frames": {**FRAME_COUNT, "minimum": 2}})
+ARRANGE_V2_SCHEMA = object_schema({"schema": {"const": "score-music-arrange/v2"}, "request_id": IDENTIFIER,
+    "segments": ARRANGE_SCHEMA["properties"]["segments"],
+    "transitions": {"type": "array", "maxItems": 1023, "items": TRANSITION_SCHEMA}})
+ARRANGE_REQUEST_SCHEMA = {"oneOf": [ARRANGE_SCHEMA, ARRANGE_V2_SCHEMA]}
+DOCUMENT_V2_SCHEMA = "score-music-arrangement-plan/v2"
 LIMITATIONS = [
     "Arrangement copies named regions sequentially with integer repeats; it does not infer a global tempo or align beats.",
     "No gaps, overlaps, fades, padding, resampling or time stretching are added.",
@@ -26,9 +36,15 @@ LIMITATIONS = [
     "New annotations or locks require an explicit request. Exact copying does not establish musical or listening acceptance.",
     "An interrupted Core action claim remains recovery_pending; no new ID or regeneration is attempted.",
 ]
+V2_LIMITATIONS = [
+    "Only explicitly named adjacent occurrences overlap, using Core's linear Q24 envelopes and clipping rejection.",
+    "Crossfades shorten the output by their frame counts; bodies exclude the complete incoming and outgoing overlap windows.",
+    "There is no beat alignment, time stretching, resampling, global tempo inference or automatic listening approval.",
+    *LIMITATIONS[2:],
+]
 
 
-def _publication_budget(store, binding, document, parents):
+def _publication_budget(store, binding, document, parents, limitations=LIMITATIONS):
     """Bound the entire receipt before claiming, including its duplicated metadata.
 
     Core stores document and binding once each, and parents in both outputs[0]
@@ -37,17 +53,70 @@ def _publication_budget(store, binding, document, parents):
     inside that reserve. Core 0.6's claim itself contains only bounded IDs/digest.
     """
     data = canonical(document)
-    variable = {"product": store.product, "request_id": document["request"]["request_id"], "limitations": LIMITATIONS}
+    variable = {"product": store.product, "request_id": document["request"]["request_id"], "limitations": limitations}
     budget = (len(data) + len(canonical(binding)) + 2 * len(canonical(parents))
               + len(canonical(variable)) + LIMITS["publication_reserved_bytes"])
     if len(data) > MAX_JSON_BYTES or budget > MAX_JSON_BYTES:
-        raise AudioError("json_too_large", "Arrangement plan and complete publication exceed the JSON size budget",
+        raise AudioError("json_too_large", "Musical document and complete publication exceed the JSON size budget",
                          details={"budgeted_bytes": budget, "maximum_bytes": MAX_JSON_BYTES})
     return data
 
 
+def _transition_timeline(request, segments, original):
+    positions = {(item["segment_id"], item["repeat_index"]): index for index, item in enumerate(original)}
+    boundaries = {}
+    for transition in request["transitions"]:
+        index = positions.get((transition["after_segment_id"], transition["after_repeat_index"]))
+        if index is None or index == len(original) - 1:
+            raise AudioError("music_transition_boundary", "Transition must follow an existing non-final occurrence")
+        if index in boundaries:
+            raise AudioError("duplicate_music_transition", "Each occurrence boundary accepts only one transition")
+        boundaries[index] = transition["crossfade_frames"]
+    timeline, cursor = [], 0
+    for index, item in enumerate(original):
+        incoming, outgoing = boundaries.get(index - 1, 0), boundaries.get(index, 0)
+        length = item["end_frame"] - item["start_frame"]
+        if incoming + outgoing > length:
+            raise AudioError("music_transition_overlap", "Incoming and outgoing transitions must fit without overlapping")
+        start = cursor - incoming
+        cursor = start + length
+        timeline.append({**item, "start_frame": start, "end_frame": cursor,
+                         "fade_in_frames": incoming, "fade_out_frames": outgoing,
+                         "body_start_frame": start + incoming, "body_end_frame": cursor - outgoing})
+    transitions = []
+    for index, frames in sorted(boundaries.items()):
+        left, right = timeline[index], timeline[index + 1]
+        transitions.append({"after_segment_id": left["segment_id"], "after_repeat_index": left["repeat_index"],
+            "before_segment_id": right["segment_id"], "before_repeat_index": right["repeat_index"],
+            "crossfade_frames": frames, "start_frame": right["start_frame"], "end_frame": left["end_frame"]})
+    events = []
+    group_segment = None
+    for item in timeline:
+        segment = segments[item["segment_index"]]
+        length = item["end_frame"] - item["start_frame"]
+        previous = events[-1] if events else None
+        if (previous is not None and group_segment == item["segment_index"] and previous["repeat"] < 64
+                and previous["fade_in_frames"] == item["fade_in_frames"]
+                and previous["fade_out_frames"] == item["fade_out_frames"]):
+            interval = item["start_frame"] - previous["offset_frame"] if previous["repeat"] == 1 else previous["interval_frames"]
+            if interval > 0 and item["start_frame"] == previous["offset_frame"] + previous["repeat"] * interval:
+                previous["interval_frames"] = interval
+                previous["repeat"] += 1
+                continue
+        if len(events) == 128:
+            raise AudioError("music_arrangement_event_limit", "Explicit transition pattern needs more than 128 Core event definitions")
+        events.append({"event_id": f"event-{len(events)}", "input_index": segment["input_index"], "track": "music",
+            "source_start_frame": segment["region"]["start_frame"], "source_end_frame": segment["region"]["end_frame"],
+            "offset_frame": item["start_frame"], "repeat": 1, "interval_frames": length, "db": 0,
+            "fade_in_frames": item["fade_in_frames"], "fade_out_frames": item["fade_out_frames"]})
+        group_segment = item["segment_index"]
+    return timeline, transitions, events, cursor
+
+
+@validation_scope()
 def _build(store, request):
-    validate(request, ARRANGE_SCHEMA)
+    validate(request, ARRANGE_REQUEST_SCHEMA)
+    v2 = request["schema"] == "score-music-arrange/v2"
     ids = [segment["id"] for segment in request["segments"]]
     if len(set(ids)) != len(ids):
         raise AudioError("duplicate_music_segment", "Arrangement segment IDs must be unique")
@@ -90,17 +159,23 @@ def _build(store, request):
     parents.extend({"role": "source", **_ref(audio)} for audio in inputs)
     if len(parents) > LIMITS["parents"]:
         raise AudioError("music_arrangement_limit", "Arrangement exceeds its parent reference limit")
-    binding = {"operation": "score.music.arrange/v1", "request": request, "segments": segments, "inputs": inputs}
+    if v2:
+        timeline, transitions, events, cursor = _transition_timeline(request, segments, timeline)
+    binding = {"operation": "score.music.arrange/v2" if v2 else "score.music.arrange/v1",
+               "request": request, "segments": segments, "inputs": inputs}
     core_request = {"schema": "matter-action/v1", "request_id": "music-" + fingerprint(binding)["hex"],
                     "operation": "scene/v1", "inputs": [audio["asset_id"] for audio in inputs],
                     "parameters": {"duration_frames": cursor, "tracks": [{"name": "music", "db": 0,
                         "fade_in_frames": 0, "fade_out_frames": 0}], "events": events, "master_db": 0, "clip": "reject"}}
     # This checks complete input WAV sizes and the output limit, without rendering.
     resolution = ActionService(store).resolve(core_request)
-    document = {"schema": DOCUMENT_SCHEMA, "request": request, "segments": segments, "inputs": inputs,
+    document = {"schema": DOCUMENT_V2_SCHEMA if v2 else DOCUMENT_SCHEMA, "request": request, "segments": segments, "inputs": inputs,
                 "timeline": timeline, "duration_frames": cursor, "core_request": core_request,
                 "core_resolution": resolution, "expected_resolution_digest": resolution["digest"]["hex"]}
-    data = _publication_budget(store, binding, document, parents)
+    if v2:
+        document.update({"transitions": transitions, "transition_curve": "linear", "envelope_profile": "q24",
+                         "shortened_by_frames": sum(item["crossfade_frames"] for item in transitions)})
+    data = _publication_budget(store, binding, document, parents, V2_LIMITATIONS if v2 else LIMITATIONS)
     return binding, document, parents, data
 
 
@@ -109,17 +184,19 @@ def arrange(store: ArtifactStore, request):
 
     def produce(publication):
         output = publication.add(data, {"kind": ROLE, "content_type": "application/json"}, role=ROLE, parents=parents)
-        return {"plan": output, "document": document, "limitations": LIMITATIONS}
+        return {"plan": output, "document": document,
+                "limitations": V2_LIMITATIONS if request["schema"] == "score-music-arrange/v2" else LIMITATIONS}
 
     return store.transact(request["request_id"], binding, produce)
 
 
+@checked_asset("arrangement")
 def load(store: ArtifactStore, asset_id):
     record, raw = store.asset(asset_id)
     if record["role"] != ROLE:
         raise AudioError("invalid_music_arrangement", "Expected a saved music arrangement plan")
     document = parse_json(raw)
-    if not isinstance(document, dict) or document.get("schema") != DOCUMENT_SCHEMA:
+    if not isinstance(document, dict) or document.get("schema") not in (DOCUMENT_SCHEMA, DOCUMENT_V2_SCHEMA):
         raise AudioError("invalid_music_arrangement", "Expected a saved music arrangement plan")
     _, rebuilt, parents, _ = _build(store, document["request"])
     if document != rebuilt or record["parents"] != parents:

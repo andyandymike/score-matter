@@ -374,7 +374,7 @@ range. `timeline` records each occurrence's new start/end frames and zero-based
 by asset ID in first-appearance order; distinct assets remain distinct even when
 their audio bytes match.
 
-The plan compiles to Core `scene/v1` and its duration is the sum of all repeated
+The v1 plan compiles to Core `scene/v1` and its duration is the sum of all repeated
 region lengths. Every input must have the same sample rate and channel count.
 Source regions may have different lengths, tempi or free/unknown timing: the
 operation copies their resolved PCM sequentially. It adds no gaps, overlaps,
@@ -398,6 +398,128 @@ does not change source sessions, locks or feedback. Source annotations and PCM
 locks are not transferred. Annotate the result and create its session or protection
 explicitly. Selecting it into a source session with existing locks can be rejected
 by Core's lineage checks; create a new session when working with this new timeline.
+
+#### Add explicit transitions
+
+Use `score-music-arrange/v2` when a particular join needs a linear crossfade.
+The existing v1 request, saved plans and execution identities keep their original
+hard-join behavior. In v2, `transitions` is required, and an empty array still
+means hard joins. Each entry identifies the occurrence **before** a join using
+its segment ID and zero-based repeat index:
+
+```json
+{
+  "schema": "score-music-arrange/v2",
+  "request_id": "music-transition-001",
+  "segments": [
+    {
+      "id": "theme-a",
+      "annotation_id": "THEME_A_ANNOTATION_ID",
+      "region_id": "theme",
+      "repeat": 2
+    },
+    {
+      "id": "theme-b",
+      "annotation_id": "THEME_B_ANNOTATION_ID",
+      "region_id": "theme",
+      "repeat": 1
+    }
+  ],
+  "transitions": [
+    {
+      "after_segment_id": "theme-a",
+      "after_repeat_index": 0,
+      "crossfade_frames": 128
+    },
+    {
+      "after_segment_id": "theme-a",
+      "after_repeat_index": 1,
+      "crossfade_frames": 256
+    }
+  ]
+}
+```
+
+Save the request and use the same `music arrange`, `music show` and
+`music execute` commands above. This example crossfades the two A occurrences,
+then the second A into B. The chosen regions must be long enough for those
+windows. Each transition is at least two integer frames; the final occurrence,
+missing occurrences and duplicate boundary entries are rejected. For every
+occurrence, its incoming and outgoing overlaps together must fit its complete
+source length. Three-way mixing is not allowed. No transition is inferred for
+an omitted join, and no fade is added at the beginning or end of the track.
+
+The v2 plan records each overlap's output start/end frames, each occurrence's
+`fade_in_frames`, `fade_out_frames`, `body_start_frame` and `body_end_frame`, and
+`shortened_by_frames`. Its total duration is the original sum minus the overlap
+lengths: this example shortens the track by 384 frames. Envelopes use Core's
+linear Q24 rule and `scene/v1` mixing with clipping rejection. The plan still
+makes no beat-alignment, harmony, tempo or seamlessness claim.
+
+Compatible consecutive repeats are compiled into the same Core event where
+their source, fades and spacing agree. A transition pattern requiring more than
+128 event definitions is rejected before publication, even if it fits the
+1,024-occurrence limit. The other input, output and complete-receipt size limits
+continue to apply. Both v1 and v2 produce candidates on a new timeline and leave
+source sessions and locks unchanged.
+
+#### Continue editing an executed arrangement
+
+`music annotate-arrangement` creates explicitly requested section marks on an
+**already completed** v1 or v2 arrangement. It does not execute a saved plan.
+After inspecting and executing the plan above, save this request as
+`arranged-marks.json` with its actual plan ID:
+
+```json
+{
+  "schema": "score-music-annotate-arrangement/v1",
+  "request_id": "arranged-marks-001",
+  "plan_id": "ARRANGEMENT_PLAN_ID",
+  "source": "agent",
+  "regions": [
+    {
+      "id": "opening-a",
+      "segment_id": "theme-a",
+      "repeat_index": 0,
+      "range": "full"
+    },
+    {
+      "id": "second-a-body",
+      "segment_id": "theme-a",
+      "repeat_index": 1,
+      "range": "body"
+    }
+  ]
+}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace music annotate-arrangement --request arranged-marks.json --json
+python -m score_matter audio --workspace .local/audio-workspace music show ANNOTATION_ID --json
+```
+
+`full` marks the occurrence's whole output range, including any mixed transition
+audio. `body` removes the complete incoming and outgoing overlap windows; an
+empty body is rejected. A v1 occurrence has no overlaps, so its full and body
+ranges coincide. Each request names 1–128 distinct occurrences with distinct
+region IDs; choose full or body once per occurrence. Marks use exact integer
+output frames and `unknown` timing. They do not inherit source tempo grids.
+
+The new `music_annotation` asset binds the exact plan, matching completed action
+receipt and actual output WAV. Its document also records the selected source
+occurrences and their source/output ranges. Showing or reusing it verifies this
+relationship, including its ancestors, again. A missing or failed action cannot
+be annotated; a pending claim remains `recovery_pending`. Creation never selects
+the output or adds feedback or locks. The supplied `source` describes who supplied
+these marks and is not listening approval.
+
+Use the returned annotation ID with the existing `music plan` commands to trim,
+loop or replace a named region, or use it in another arrangement. Inspect that
+plan, execute it explicitly, then create/select a session and export using the
+existing shared commands. Protection requires a separate explicit request on the
+new timeline. Derived annotations support at most 32 ancestry levels, and their
+complete publication receipts must fit the same 1 MiB budget; invalid or excessive
+ancestry is rejected before creating another annotation.
 
 ### Add protection without removing existing locks
 
@@ -432,7 +554,7 @@ plan publication use the existing complete-publication transaction; execution
 uses the existing Core action transaction or session mutation. There is no atomic
 transaction spanning all three steps.
 
-Replaying the same annotate, plan or arrange request returns its original saved result;
+Replaying the same annotate, plan, arrange or annotate-arrangement request returns its original saved result;
 changing its inputs under that ID conflicts. Repeating `music execute PLAN_ID`
 returns its completed receipt even after later session changes. The plan's
 `core_request.request_id` can also be queried with `action show` for trim/loop/splice/scene,

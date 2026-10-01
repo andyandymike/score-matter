@@ -35,7 +35,8 @@ def main():
     suite = unittest.TestSuite()
     for directory, pattern in [('tests', 'test_audio.py'), ('tests', 'test_sa3_edit.py'),
                                ('tests', 'test_candidate_registration.py'), ('tests', 'test_music_annotations.py'),
-                               ('tests', 'test_music_arrangements.py')]:
+                               ('tests', 'test_music_arrangements.py'), ('tests', 'test_music_transitions.py'),
+                               ('tests', 'test_music_arrangement_annotations.py')]:
         suite.addTests(loader.discover(str(ROOT / directory), pattern=pattern))
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
     require(outcome.wasSuccessful() and not outcome.skipped, "Shared audio tests must pass without skips")
@@ -220,6 +221,90 @@ def main():
             call("music", "show", arranged_audio["asset_id"], expected_error="invalid_music_plan")
             require(call("context", "show", "music-check") == music_context, "Arrangement changed source selection, locks or feedback")
 
+            transition_request = {"schema": "score-music-arrange/v2", "request_id": "music-transition-plan", "segments": [
+                {"id": "a-repeat", "annotation_id": annotation_id, "region_id": "half", "repeat": 2},
+                {"id": "b", "annotation_id": replacement_annotation["outputs"][0]["asset_id"], "region_id": "alternate", "repeat": 1}],
+                "transitions": [{"after_segment_id": "a-repeat", "after_repeat_index": 1, "crossfade_frames": 3}]}
+            transition_plan = write(["music", "arrange"], transition_request)
+            transition_id = transition_plan["outputs"][0]["asset_id"]
+            transition_document = call("music", "show", transition_id)["document"]
+            require([(item["start_frame"], item["end_frame"], item["body_start_frame"], item["body_end_frame"])
+                     for item in transition_document["timeline"]]
+                    == [(0, 4000, 0, 4000), (4000, 8000, 4000, 7997), (7997, 11997, 8000, 11997)],
+                    "Only the second A/B boundary may overlap")
+            derived_request = {"schema": "score-music-annotate-arrangement/v1", "request_id": "finished-music-annotation",
+                "plan_id": transition_id, "source": "agent", "regions": [
+                    {"id": "keep", "segment_id": "a-repeat", "repeat_index": 0, "range": "full"},
+                    {"id": "edit", "segment_id": "a-repeat", "repeat_index": 1, "range": "body"},
+                    {"id": "replacement", "segment_id": "b", "repeat_index": 0, "range": "body"}]}
+            write(["music", "annotate-arrangement"], derived_request, expected_error="music_arrangement_not_completed")
+            transition_result = call("music", "execute", transition_id)
+            transition_audio = transition_result["outputs"][0]
+            # The three-frame overlap has weights (1,0), (1/2,1/2), (0,1).
+            # This oracle uses fixture samples, independently of the scene planner.
+            a_samples = list(decode_wav(original).samples())[:4000]
+            b_samples = list(decode_wav(replacement_bytes).samples())[500:4500]
+            mixed_middle = a_samples[-2] + b_samples[1]
+            mixed_middle = (mixed_middle + 1) // 2 if mixed_middle >= 0 else -((-mixed_middle + 1) // 2)
+            transition_samples = a_samples + a_samples[:-3] + [a_samples[-3], mixed_middle, b_samples[2]] + b_samples[3:]
+            transition_raw = (workspace / transition_audio["locator"]).read_bytes()
+            transition_pcm = decode_wav(transition_raw).payload
+            require(list(decode_wav(transition_raw).samples()) == transition_samples
+                    and transition_audio["media"]["frame_count"] == 11997, "Transition PCM or shortened length changed")
+            require(transition_result["audio_model_calls"] == 0, "Transition launched a model")
+            call("music", "show", transition_audio["asset_id"], expected_error="invalid_music_plan")
+            derived = write(["music", "annotate-arrangement"], derived_request)
+            derived_id = derived["outputs"][0]["asset_id"]
+            derived_document = call("music", "show", derived_id)["document"]
+            require(derived_document["timing"] == {"mode": "unknown"}
+                    and derived_document["audio"]["asset_id"] == transition_audio["asset_id"]
+                    and [(r["start_frame"], r["end_frame"]) for r in derived_document["resolved_regions"]]
+                    == [(0, 4000), (4000, 7997), (8000, 11997)], "Finished annotation inherited a grid or mapped the wrong body")
+            require(write(["music", "annotate-arrangement"], derived_request) == derived, "Finished annotation replay changed")
+            require(call("context", "show", "music-check") == music_context, "Finishing altered the source session or feedback")
+            write(["session", "create"], {"schema": "matter-session-create/v1", "request_id": "finished-session-create",
+                "session_id": "finished", "name": "Explicit finished arrangement", "asset_id": transition_audio["asset_id"]})
+            finished_lock_plan = write(["music", "plan"], {"schema": "score-music-plan/v1", "request_id": "finished-lock-plan",
+                "annotation_id": derived_id, "region_ids": ["keep"],
+                "target": {"kind": "constraints", "session_id": "finished", "expected_revision": 1}})
+            call("music", "execute", finished_lock_plan["outputs"][0]["asset_id"])
+            locked_context = call("context", "show", "finished")
+            body_plan = write(["music", "plan"], {"schema": "score-music-plan/v1", "request_id": "finished-body-plan",
+                "annotation_id": derived_id, "region_ids": ["edit"], "target": {"kind": "splice", "transition_frames": 0,
+                    "replacement": {"annotation_id": derived_id, "region_id": "replacement"},
+                    "protection": {"session_id": "finished", "revision": 2}}})
+            body_result = call("music", "execute", body_plan["outputs"][0]["asset_id"])
+            body_audio = body_result["outputs"][0]
+            body_raw = (workspace / body_audio["locator"]).read_bytes()
+            body_pcm = decode_wav(body_raw).payload
+            require(body_pcm == transition_pcm[:8000] + transition_pcm[16000:23994] + transition_pcm[15994:]
+                    and body_pcm[:8000] == transition_pcm[:8000] and body_pcm[15994:] == transition_pcm[15994:],
+                    "Body editing changed locked PCM or the adjacent transition")
+            require(body_result["findings"][0]["protection"]["status"] == "verified"
+                    and body_result["audio_model_calls"] == 0, "Body editing lost its PCM lock or launched a model")
+            require(call("context", "show", "finished") == locked_context, "Body editing selected its own output")
+            call("music", "show", body_audio["asset_id"], expected_error="invalid_music_plan")
+            write(["session", "select"], {"schema": "matter-session-select/v1", "request_id": "finished-select-body",
+                "session_id": "finished", "expected_revision": 2, "asset_id": body_audio["asset_id"]})
+            finished_context = call("context", "show", "finished")
+            require(finished_context["current"]["selected_asset"]["asset_id"] == body_audio["asset_id"]
+                    and finished_context["feedback"] == [], "Explicit selection or feedback is incorrect")
+            require(finished_context["constraints"]["mapped_regions"] == locked_context["constraints"]["mapped_regions"]
+                    and [(item["start_frame"], item["end_frame"]) for item in finished_context["constraints"]["mapped_regions"]]
+                    == [(0, 4000)], "Selected edit changed the exact protected region or its PCM digest")
+            write(["cue-set", "create"], {"schema": "matter-cue-set/v1", "set_id": "finished-cue", "name": "Finished music",
+                "cues": [{"key": "finished", "name": "Finished", "selected_variant": "main", "variants": [
+                    {"key": "main", "asset_id": body_audio["asset_id"], "selection": {"session_id": "finished", "revision": 3}}]}]})
+            finished_delivery = write(["cue-set", "export"], {"schema": "matter-cue-export/v1", "request_id": "finished-delivery",
+                "set_id": "finished-cue", "variants": "selected"})
+            require(len(finished_delivery["body"]["entries"]) == 1, "Finished delivery must contain the selected version")
+            exported = finished_delivery["body"]["entries"][0]
+            require((Path(finished_delivery["directory"]) / exported["filename"]).read_bytes() == body_raw,
+                    "Finished export changed WAV bytes")
+            require(call("context", "show", "music-check") == music_context
+                    and source.read_bytes() == original and replacement_source.read_bytes() == replacement_bytes,
+                    "Finishing changed source sessions, feedback or recordings")
+
         write(["session", "create"], {"schema": "matter-session-create/v1", "request_id": "session-create",
               "session_id": "check", "name": "Engineering fixture"})
         selection = {"schema": "matter-session-select/v1", "request_id": "select-input", "session_id": "check",
@@ -266,10 +351,11 @@ def main():
         require(source.read_bytes() == original, "Authoring modified the original source")
 
     print(json.dumps({"status": "passed", "product": PRODUCT, "core_version": "0.6.0", "adapter_tests": outcome.testsRun,
-                      "cli_calls": calls, "exported_wavs": 2, "exact_export_bytes": True,
+                      "cli_calls": calls, "exported_wavs": 3 if PRODUCT == "score-matter" else 2, "exact_export_bytes": True,
                       "music_coordinates": "explicit_grid_and_immutable_plan", "loop_period_accounts_for_overlap": True,
                       "music_splice": "equal_frames_exact_outside_pcm_no_automatic_selection",
                       "music_arrangement": "a_b_twice_a_exact_pcm_no_automatic_selection",
+                      "music_finishing": "explicit_seam_body_annotation_locked_splice_select_exact_export",
                       "audio_model_calls": 0, "human_listening": "not_performed"}))
     return 0
 

@@ -16,6 +16,7 @@ from matter_audio_core.fades import FRAME_COUNT
 from matter_audio_core.media import decode_wav
 from matter_audio_core.session_contracts import CONSTRAINTS_SCHEMA, REVISION
 from matter_audio_core.sessions import SessionService
+from .music_validation import checked_asset
 
 
 ROUNDING = "rational-half-up/v1"
@@ -68,9 +69,11 @@ LIMITATIONS = [
 
 
 def capabilities():
-    from .music_arrangement import ARRANGE_SCHEMA, LIMITS, LIMITATIONS as ARRANGEMENT_LIMITATIONS
-    return {"music": {"availability": "available", "commands": ["music annotate", "music show", "music plan", "music arrange", "music execute"],
-        "file_parameters": ["--request"], "request_schemas": {"annotate": ANNOTATE_SCHEMA, "plan": PLAN_SCHEMA, "arrange": ARRANGE_SCHEMA},
+    from .music_arrangement import ARRANGE_REQUEST_SCHEMA, LIMITS, LIMITATIONS as ARRANGEMENT_LIMITATIONS, V2_LIMITATIONS
+    from .music_arrangement_annotations import ANNOTATE_ARRANGEMENT_SCHEMA, MAX_ANCESTRY
+    return {"music": {"availability": "available", "commands": ["music annotate", "music show", "music plan", "music arrange", "music execute", "music annotate-arrangement"],
+        "file_parameters": ["--request"], "request_schemas": {"annotate": ANNOTATE_SCHEMA, "plan": PLAN_SCHEMA,
+            "arrange": ARRANGE_REQUEST_SCHEMA, "annotate-arrangement": ANNOTATE_ARRANGEMENT_SCHEMA},
         "rounding": ROUNDING, "decimal_input": "Exact nonnegative decimal strings, at most nine fractional digits",
         "bpm_unit": "Fraction of a whole note; 1/4 is a quarter, 3/8 is a dotted quarter",
         "coordinates": "One-based bars and beats; beat unit is the meter denominator; half-open regions",
@@ -80,6 +83,12 @@ def capabilities():
                    "protection_target": "base", "transition_rule": "inside_target_window_without_overlap"},
         "arrangement": {"mode": "sequential_integer_repeats", "limits": LIMITS,
                         "repeat_index": "zero_based", "input_identity": "asset_id_first_appearance",
+                        "transitions": {"request_schema": "score-music-arrange/v2", "curve": "linear",
+                            "envelope_profile": "q24", "minimum_frames": 2, "event_definitions": 128,
+                            "limitations": V2_LIMITATIONS},
+                        "annotation": {"requires": "completed_matching_action", "timing": "unknown",
+                            "ranges": ["full", "body"], "maximum_regions": 128, "maximum_ancestry": MAX_ANCESTRY,
+                            "duplicate_occurrences": "rejected", "automatic_execution": False},
                         "limitations": ARRANGEMENT_LIMITATIONS},
         "limitations": LIMITATIONS}}
 
@@ -169,11 +178,15 @@ def annotate(store: ArtifactStore, request):
                     document, "music_annotation", [{"role": "annotates", **_ref(document["audio"])}])
 
 
+@checked_asset("annotation")
 def _load_annotation(store, asset_id):
     record, raw = store.asset(asset_id)
     if record["role"] != "music_annotation":
         raise AudioError("invalid_music_annotation", "Expected a saved music annotation asset")
     document = parse_json(raw)
+    if isinstance(document, dict) and document.get("schema") == "score-music-arrangement-annotation/v1":
+        from .music_arrangement_annotations import load
+        return load(store, asset_id)
     if not isinstance(document, dict) or document.get("schema") != "score-music-annotation/v1":
         raise AudioError("invalid_music_annotation", "Expected a saved music annotation asset")
     if document != _annotation_document(store, document["request"]):
@@ -377,18 +390,24 @@ def arrange(store: ArtifactStore, request):
     return create_arrangement(store, request)
 
 
+def annotate_arrangement(store: ArtifactStore, request):
+    from .music_arrangement_annotations import annotate_arrangement as create_annotation
+    return create_annotation(store, request)
+
+
 def extend_parser(parser):
     commands = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
     music = commands.add_parser("music", help="Annotate existing audio and explicitly plan or execute musical regions.").add_subparsers(
         dest="music_command", required=True)
-    for name in ("annotate", "plan", "arrange"):
+    for name in ("annotate", "plan", "arrange", "annotate-arrangement"):
         music.add_parser(name).add_argument("--request", type=Path, required=True)
     for name in ("show", "execute"):
         music.add_parser(name).add_argument("asset_id")
 
 
 def handle_extra(args, store):
-    if args.music_command in ("annotate", "plan", "arrange"):
+    if args.music_command in ("annotate", "plan", "arrange", "annotate-arrangement"):
         request = parse_json(stable_read(args.request, max_bytes=MAX_JSON_BYTES))
-        return {"annotate": annotate, "plan": plan, "arrange": arrange}[args.music_command](store, request)
+        return {"annotate": annotate, "plan": plan, "arrange": arrange,
+                "annotate-arrangement": annotate_arrangement}[args.music_command](store, request)
     return {"show": show, "execute": execute}[args.music_command](store, args.asset_id)
