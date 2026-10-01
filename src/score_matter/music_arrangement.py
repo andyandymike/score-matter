@@ -1,0 +1,148 @@
+"""Sequential, frame-exact arrangements compiled to existing Core scene actions."""
+from __future__ import annotations
+
+from matter_audio_core.actions import ActionService
+from matter_audio_core.artifacts import ArtifactStore
+from matter_audio_core.contracts import MAX_JSON_BYTES, canonical, fingerprint, object_schema, parse_json, validate
+from matter_audio_core.errors import AudioError
+
+from .music import ASSET_ID, IDENTIFIER, _load_annotation, _ref
+
+
+ROLE = "music_arrangement"
+DOCUMENT_SCHEMA = "score-music-arrangement-plan/v1"
+LIMITS = {"segments": 128, "repeat": 64, "occurrences": 1024, "distinct_audio": 16, "parents": 144,
+          "input_wav_bytes": 64 * 1024 * 1024, "output_wav_bytes": 64 * 1024 * 1024,
+          "publication_json_bytes": MAX_JSON_BYTES, "publication_reserved_bytes": 8192}
+SEGMENT_SCHEMA = object_schema({"id": IDENTIFIER, "annotation_id": ASSET_ID, "region_id": IDENTIFIER,
+                                "repeat": {"type": "integer", "minimum": 1, "maximum": LIMITS["repeat"]}})
+ARRANGE_SCHEMA = object_schema({"schema": {"const": "score-music-arrange/v1"}, "request_id": IDENTIFIER,
+    "segments": {"type": "array", "minItems": 1, "maxItems": LIMITS["segments"], "items": SEGMENT_SCHEMA}})
+LIMITATIONS = [
+    "Arrangement copies named regions sequentially with integer repeats; it does not infer a global tempo or align beats.",
+    "No gaps, overlaps, fades, padding, resampling or time stretching are added.",
+    "The output is a new timeline. Source annotations and PCM locks are not inherited; protection/session fields are rejected.",
+    "Planning and execution do not select audio, change source sessions or add feedback. Use a separate explicit session workflow.",
+    "New annotations or locks require an explicit request. Exact copying does not establish musical or listening acceptance.",
+    "An interrupted Core action claim remains recovery_pending; no new ID or regeneration is attempted.",
+]
+
+
+def _publication_budget(store, binding, document, parents):
+    """Bound the entire receipt before claiming, including its duplicated metadata.
+
+    Core stores document and binding once each, and parents in both outputs[0]
+    and plan. The reserve covers their fixed asset-record/manifest fields. Count
+    variable product/request/limitations separately, so large labels cannot hide
+    inside that reserve. Core 0.6's claim itself contains only bounded IDs/digest.
+    """
+    data = canonical(document)
+    variable = {"product": store.product, "request_id": document["request"]["request_id"], "limitations": LIMITATIONS}
+    budget = (len(data) + len(canonical(binding)) + 2 * len(canonical(parents))
+              + len(canonical(variable)) + LIMITS["publication_reserved_bytes"])
+    if len(data) > MAX_JSON_BYTES or budget > MAX_JSON_BYTES:
+        raise AudioError("json_too_large", "Arrangement plan and complete publication exceed the JSON size budget",
+                         details={"budgeted_bytes": budget, "maximum_bytes": MAX_JSON_BYTES})
+    return data
+
+
+def _build(store, request):
+    validate(request, ARRANGE_SCHEMA)
+    ids = [segment["id"] for segment in request["segments"]]
+    if len(set(ids)) != len(ids):
+        raise AudioError("duplicate_music_segment", "Arrangement segment IDs must be unique")
+    if sum(segment["repeat"] for segment in request["segments"]) > LIMITS["occurrences"]:
+        raise AudioError("music_arrangement_limit", "Arrangement exceeds 1024 occurrences")
+    annotation_cache, source_indices = {}, {}
+    segments, inputs, timeline, events, parents = [], [], [], [], []
+    cursor = 0
+    for index, segment in enumerate(request["segments"]):
+        annotation_id = segment["annotation_id"]
+        if annotation_id not in annotation_cache:
+            annotation_cache[annotation_id] = _load_annotation(store, annotation_id)
+            parents.append({"role": "annotation", **_ref(annotation_cache[annotation_id][0])})
+        record, annotation = annotation_cache[annotation_id]
+        region = next((item for item in annotation["resolved_regions"] if item["id"] == segment["region_id"]), None)
+        if region is None:
+            raise AudioError("music_region_not_found", "Arrangement region is absent from this exact annotation")
+        audio = annotation["audio"]
+        if inputs and any(audio["media"][key] != inputs[0]["media"][key] for key in ("sample_rate_hz", "channels")):
+            raise AudioError("music_arrangement_format_mismatch", "All arrangement inputs must share sample rate and channels")
+        if audio["asset_id"] not in source_indices:
+            if len(inputs) >= LIMITS["distinct_audio"]:
+                raise AudioError("music_arrangement_limit", "Arrangement exceeds 16 distinct audio assets")
+            source_indices[audio["asset_id"]] = len(inputs)
+            inputs.append(audio)
+        input_index = source_indices[audio["asset_id"]]
+        segments.append({"id": segment["id"], "repeat": segment["repeat"], "annotation": _ref(record),
+                         "audio": audio, "region": region, "input_index": input_index})
+        length = region["end_frame"] - region["start_frame"]
+        # Core event keys have a narrower alphabet/length than musical segment IDs.
+        events.append({"event_id": f"segment-{index}", "input_index": input_index, "track": "music",
+                       "source_start_frame": region["start_frame"], "source_end_frame": region["end_frame"],
+                       "offset_frame": cursor, "repeat": segment["repeat"], "interval_frames": length,
+                       "db": 0, "fade_in_frames": 0, "fade_out_frames": 0})
+        for repeat_index in range(segment["repeat"]):
+            start = cursor + repeat_index * length
+            timeline.append({"segment_index": index, "segment_id": segment["id"], "repeat_index": repeat_index,
+                             "start_frame": start, "end_frame": start + length})
+        cursor += length * segment["repeat"]
+    parents.extend({"role": "source", **_ref(audio)} for audio in inputs)
+    if len(parents) > LIMITS["parents"]:
+        raise AudioError("music_arrangement_limit", "Arrangement exceeds its parent reference limit")
+    binding = {"operation": "score.music.arrange/v1", "request": request, "segments": segments, "inputs": inputs}
+    core_request = {"schema": "matter-action/v1", "request_id": "music-" + fingerprint(binding)["hex"],
+                    "operation": "scene/v1", "inputs": [audio["asset_id"] for audio in inputs],
+                    "parameters": {"duration_frames": cursor, "tracks": [{"name": "music", "db": 0,
+                        "fade_in_frames": 0, "fade_out_frames": 0}], "events": events, "master_db": 0, "clip": "reject"}}
+    # This checks complete input WAV sizes and the output limit, without rendering.
+    resolution = ActionService(store).resolve(core_request)
+    document = {"schema": DOCUMENT_SCHEMA, "request": request, "segments": segments, "inputs": inputs,
+                "timeline": timeline, "duration_frames": cursor, "core_request": core_request,
+                "core_resolution": resolution, "expected_resolution_digest": resolution["digest"]["hex"]}
+    data = _publication_budget(store, binding, document, parents)
+    return binding, document, parents, data
+
+
+def arrange(store: ArtifactStore, request):
+    binding, document, parents, data = _build(store, request)
+
+    def produce(publication):
+        output = publication.add(data, {"kind": ROLE, "content_type": "application/json"}, role=ROLE, parents=parents)
+        return {"plan": output, "document": document, "limitations": LIMITATIONS}
+
+    return store.transact(request["request_id"], binding, produce)
+
+
+def load(store: ArtifactStore, asset_id):
+    record, raw = store.asset(asset_id)
+    if record["role"] != ROLE:
+        raise AudioError("invalid_music_arrangement", "Expected a saved music arrangement plan")
+    document = parse_json(raw)
+    if not isinstance(document, dict) or document.get("schema") != DOCUMENT_SCHEMA:
+        raise AudioError("invalid_music_arrangement", "Expected a saved music arrangement plan")
+    _, rebuilt, parents, _ = _build(store, document["request"])
+    if document != rebuilt or record["parents"] != parents:
+        raise AudioError("music_binding_mismatch", "Arrangement differs from its exact sources, sequence or frozen Core resolution")
+    return record, document
+
+
+def execute(store: ArtifactStore, asset_id):
+    record, document = load(store, asset_id)
+    request = document["core_request"]
+    try:
+        result = store.show_request(request["request_id"])
+    except AudioError as exc:
+        if exc.code != "request_not_found":
+            raise
+        result = ActionService(store).execute(request, expected_resolution_digest=document["expected_resolution_digest"])
+    else:
+        if result["binding"] != {"resolution": document["core_resolution"]}:
+            raise AudioError("request_conflict", "Arrangement execution ID already binds a different Core resolution")
+    annotations = []
+    seen = set()
+    for segment in document["segments"]:
+        if segment["annotation"]["asset_id"] not in seen:
+            annotations.append(segment["annotation"])
+            seen.add(segment["annotation"]["asset_id"])
+    return {**result, "music_plan": _ref(record), "music_annotations": annotations}

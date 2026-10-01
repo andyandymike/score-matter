@@ -34,7 +34,8 @@ def main():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     for directory, pattern in [('tests', 'test_audio.py'), ('tests', 'test_sa3_edit.py'),
-                               ('tests', 'test_candidate_registration.py'), ('tests', 'test_music_annotations.py')]:
+                               ('tests', 'test_candidate_registration.py'), ('tests', 'test_music_annotations.py'),
+                               ('tests', 'test_music_arrangements.py')]:
         suite.addTests(loader.discover(str(ROOT / directory), pattern=pattern))
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
     require(outcome.wasSuccessful() and not outcome.skipped, "Shared audio tests must pass without skips")
@@ -197,6 +198,28 @@ def main():
             require(call("context", "show", "music-check") == music_context, "Splice selected its output or altered session metadata")
             require(replacement_source.read_bytes() == replacement_bytes, "Splice changed the replacement source")
 
+            arrange_request = {"schema": "score-music-arrange/v1", "request_id": "music-arrange-plan", "segments": [
+                {"id": "a-start", "annotation_id": annotation_id, "region_id": "half", "repeat": 1},
+                {"id": "b-repeat", "annotation_id": replacement_annotation["outputs"][0]["asset_id"], "region_id": "alternate", "repeat": 2},
+                {"id": "a-end", "annotation_id": annotation_id, "region_id": "half", "repeat": 1}]}
+            arranged = write(["music", "arrange"], arrange_request)
+            arrangement_id = arranged["outputs"][0]["asset_id"]
+            require([item["role"] for item in arranged["outputs"]] == ["music_arrangement"], "Arrangement planning must only save a plan")
+            arranged_document = call("music", "show", arrangement_id)["document"]
+            require(arranged_document["duration_frames"] == 16000
+                    and [(item["start_frame"], item["end_frame"]) for item in arranged_document["timeline"]]
+                    == [(0, 4000), (4000, 8000), (8000, 12000), (12000, 16000)], "Arrangement sequence or repeat offsets changed")
+            arranged_result = call("music", "execute", arrangement_id)
+            arranged_audio = arranged_result["outputs"][0]
+            a_pcm, b_pcm = decode_wav(original).payload[:8000], decode_wav(replacement_bytes).payload[1000:9000]
+            require(decode_wav((workspace / arranged_audio["locator"]).read_bytes()).payload == a_pcm + b_pcm * 2 + a_pcm
+                    and arranged_audio["media"]["frame_count"] == 16000, "Arrangement must copy A, B twice, then A exactly")
+            require(arranged_result["audio_model_calls"] == 0, "Arrangement called a model")
+            require(write(["music", "arrange"], arrange_request) == arranged, "Arrangement plan retry changed its receipt")
+            require(call("music", "execute", arrangement_id) == arranged_result, "Arrangement execution retry changed its receipt")
+            call("music", "show", arranged_audio["asset_id"], expected_error="invalid_music_plan")
+            require(call("context", "show", "music-check") == music_context, "Arrangement changed source selection, locks or feedback")
+
         write(["session", "create"], {"schema": "matter-session-create/v1", "request_id": "session-create",
               "session_id": "check", "name": "Engineering fixture"})
         selection = {"schema": "matter-session-select/v1", "request_id": "select-input", "session_id": "check",
@@ -246,6 +269,7 @@ def main():
                       "cli_calls": calls, "exported_wavs": 2, "exact_export_bytes": True,
                       "music_coordinates": "explicit_grid_and_immutable_plan", "loop_period_accounts_for_overlap": True,
                       "music_splice": "equal_frames_exact_outside_pcm_no_automatic_selection",
+                      "music_arrangement": "a_b_twice_a_exact_pcm_no_automatic_selection",
                       "audio_model_calls": 0, "human_listening": "not_performed"}))
     return 0
 

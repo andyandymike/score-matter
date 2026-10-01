@@ -68,15 +68,19 @@ LIMITATIONS = [
 
 
 def capabilities():
-    return {"music": {"availability": "available", "commands": ["music annotate", "music show", "music plan", "music execute"],
-        "file_parameters": ["--request"], "request_schemas": {"annotate": ANNOTATE_SCHEMA, "plan": PLAN_SCHEMA},
+    from .music_arrangement import ARRANGE_SCHEMA, LIMITS, LIMITATIONS as ARRANGEMENT_LIMITATIONS
+    return {"music": {"availability": "available", "commands": ["music annotate", "music show", "music plan", "music arrange", "music execute"],
+        "file_parameters": ["--request"], "request_schemas": {"annotate": ANNOTATE_SCHEMA, "plan": PLAN_SCHEMA, "arrange": ARRANGE_SCHEMA},
         "rounding": ROUNDING, "decimal_input": "Exact nonnegative decimal strings, at most nine fractional digits",
         "bpm_unit": "Fraction of a whole note; 1/4 is a quarter, 3/8 is a dotted quarter",
         "coordinates": "One-based bars and beats; beat unit is the meter denominator; half-open regions",
-        "metadata_roles": ["music_annotation", "music_plan"], "constraints_mode": "add_only_union",
+        "metadata_roles": ["music_annotation", "music_plan", "music_arrangement"], "constraints_mode": "add_only_union",
         "execution_identity": "music- plus SHA-256 of plan request and exact annotation/audio references",
         "splice": {"length_rule": "equal_resolved_frame_count", "format_rule": "same_sample_rate_and_channels",
                    "protection_target": "base", "transition_rule": "inside_target_window_without_overlap"},
+        "arrangement": {"mode": "sequential_integer_repeats", "limits": LIMITS,
+                        "repeat_index": "zero_based", "input_identity": "asset_id_first_appearance",
+                        "limitations": ARRANGEMENT_LIMITATIONS},
         "limitations": LIMITATIONS}}
 
 
@@ -335,12 +339,18 @@ def show(store: ArtifactStore, asset_id):
     record, _ = store.asset(asset_id)
     if record["role"] == "music_annotation":
         record, document = _load_annotation(store, asset_id)
+    elif record["role"] == "music_arrangement":
+        from .music_arrangement import load
+        record, document = load(store, asset_id)
     else:
         record, document = _load_plan(store, asset_id)
     return {"schema": "score-music-document/v1", "asset": record, "document": document, "audio_model_calls": 0}
 
 
 def execute(store: ArtifactStore, plan_asset_id):
+    if store.asset(plan_asset_id)[0]["role"] == "music_arrangement":
+        from .music_arrangement import execute as execute_arrangement
+        return execute_arrangement(store, plan_asset_id)
     record, document = _load_plan(store, plan_asset_id)
     request = document["core_request"]
     if document["request"]["target"]["kind"] == "constraints":
@@ -362,18 +372,23 @@ def execute(store: ArtifactStore, plan_asset_id):
     return {**result, **references}
 
 
+def arrange(store: ArtifactStore, request):
+    from .music_arrangement import arrange as create_arrangement
+    return create_arrangement(store, request)
+
+
 def extend_parser(parser):
     commands = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
     music = commands.add_parser("music", help="Annotate existing audio and explicitly plan or execute musical regions.").add_subparsers(
         dest="music_command", required=True)
-    for name in ("annotate", "plan"):
+    for name in ("annotate", "plan", "arrange"):
         music.add_parser(name).add_argument("--request", type=Path, required=True)
     for name in ("show", "execute"):
         music.add_parser(name).add_argument("asset_id")
 
 
 def handle_extra(args, store):
-    if args.music_command in ("annotate", "plan"):
+    if args.music_command in ("annotate", "plan", "arrange"):
         request = parse_json(stable_read(args.request, max_bytes=MAX_JSON_BYTES))
-        return {"annotate": annotate, "plan": plan}[args.music_command](store, request)
+        return {"annotate": annotate, "plan": plan, "arrange": arrange}[args.music_command](store, request)
     return {"show": show, "execute": execute}[args.music_command](store, args.asset_id)

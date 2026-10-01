@@ -320,6 +320,85 @@ are rejected before rendering. Explicitly select any accepted result afterward;
 neither source annotation is automatically transferred to the new audio. This
 operation calls no model and makes no claim about matching harmony or rhythm.
 
+### Arrange named regions into a complete track
+
+Use `music arrange` for a new sequence such as intro, theme A twice, theme B,
+then outro. Each segment names an existing annotation and one complete region;
+`repeat` is always an explicit positive integer. Save this as `arrange.json`,
+substituting the actual annotation IDs and region names:
+
+```json
+{
+  "schema": "score-music-arrange/v1",
+  "request_id": "music-arrange-001",
+  "segments": [
+    {
+      "id": "intro",
+      "annotation_id": "INTRO_ANNOTATION_ID",
+      "region_id": "intro",
+      "repeat": 1
+    },
+    {
+      "id": "theme-a",
+      "annotation_id": "THEME_A_ANNOTATION_ID",
+      "region_id": "theme",
+      "repeat": 2
+    },
+    {
+      "id": "theme-b",
+      "annotation_id": "THEME_B_ANNOTATION_ID",
+      "region_id": "theme",
+      "repeat": 1
+    },
+    {
+      "id": "outro",
+      "annotation_id": "OUTRO_ANNOTATION_ID",
+      "region_id": "outro",
+      "repeat": 1
+    }
+  ]
+}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace music arrange --request arrange.json --json
+python -m score_matter audio --workspace .local/audio-workspace music show PLAN_ID --json
+python -m score_matter audio --workspace .local/audio-workspace music execute PLAN_ID --json
+```
+
+Arrangement creates an immutable `music_arrangement` metadata asset, returned
+as `plan` and `outputs[0]`. Its `score-music-arrangement-plan/v1` document freezes
+every segment's exact annotation/audio identities, digests and complete source
+range. `timeline` records each occurrence's new start/end frames and zero-based
+`repeat_index`, referring back to the frozen segment table. Inputs are deduplicated
+by asset ID in first-appearance order; distinct assets remain distinct even when
+their audio bytes match.
+
+The plan compiles to Core `scene/v1` and its duration is the sum of all repeated
+region lengths. Every input must have the same sample rate and channel count.
+Source regions may have different lengths, tempi or free/unknown timing: the
+operation copies their resolved PCM sequentially. It adds no gaps, overlaps,
+transitions, cropping, padding, resampling, time stretching or beat alignment,
+and does not infer a global BPM. Joins may be audible; exact copying does not
+establish musical or listening acceptance.
+
+Limits apply together: 128 segments with unique IDs, 1–64 repeats each, at most
+1,024 occurrences, 16 distinct audio assets and 144 parent references. Core also
+limits the combined **complete input WAV files** to 64 MiB and the output WAV to
+64 MiB. A conservative size check covers the complete publication receipt,
+including its duplicated metadata, under the 1 MiB JSON limit. Some combinations
+below the count limits can therefore still exceed the metadata budget. All these
+checks happen before claiming the arrangement request or rendering audio.
+
+`music execute` verifies the saved sequence and source bindings before delegating
+to Core. Its response preserves Core's outputs/status and adds `music_plan` and
+the distinct `music_annotations` references. The result is an unselected candidate
+on a **new timeline**. Arrangement rejects `protection` and session fields; it
+does not change source sessions, locks or feedback. Source annotations and PCM
+locks are not transferred. Annotate the result and create its session or protection
+explicitly. Selecting it into a source session with existing locks can be rejected
+by Core's lineage checks; create a new session when working with this new timeline.
+
 ### Add protection without removing existing locks
 
 A constraints plan requires the session to select the annotation's exact source
@@ -353,15 +432,15 @@ plan publication use the existing complete-publication transaction; execution
 uses the existing Core action transaction or session mutation. There is no atomic
 transaction spanning all three steps.
 
-Replaying the same annotate or plan request returns its original saved result;
+Replaying the same annotate, plan or arrange request returns its original saved result;
 changing its inputs under that ID conflicts. Repeating `music execute PLAN_ID`
 returns its completed receipt even after later session changes. The plan's
-`core_request.request_id` can also be queried with `action show` for trim/loop/splice,
+`core_request.request_id` can also be queried with `action show` for trim/loop/splice/scene,
 or `session request` for constraints. An unfinished action claim remains
 `recovery_pending`; execution never invents a replacement ID or regenerates audio.
 The saved plan continues to link the annotation to the Core request even when
 that request is queried directly through the Core commands. If executing the
-frozen trim/loop/splice request directly, also pass its saved digest with Core's
+frozen trim/loop/splice/scene request directly, also pass its saved digest with Core's
 `--expected-resolution-digest`; `music execute` supplies this check for you.
 
 ## Shared operations and continued work
