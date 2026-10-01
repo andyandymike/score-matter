@@ -47,7 +47,8 @@ instead to keep local source edits live while refreshing metadata.
 
 The verification script requires every adapter test to pass without skips. It
 uses fresh installed CLIs with synthetic PCM to check candidate registration,
-explicit revision-checked session selection, normalization, loops, scene rendering, revision-bound cue exports and local
+musical coordinates and immutable plans, explicit revision-checked session
+selection, normalization, loops, scene rendering, revision-bound cue exports and local
 search, including original and exported bytes. It calls no model and plays no
 audio. Windows and Linux run this as a required CI job.
 
@@ -158,6 +159,151 @@ An interrupted publication can leave the core request in `recovery_pending`.
 Registration does not automatically reclaim that request, select a different ID
 or regenerate audio. Inspect the saved request and workspace before taking a
 recovery action; retrying the pending request alone does not complete it.
+
+## Mark musical regions on an exact asset
+
+Music annotations attach supplied timing and named regions to one immutable audio
+asset. They do not detect beats, stretch audio, generate music or record listening
+feedback. Start with an existing registered or imported WAV and manually establish
+its timing. Keep the actual `source`: `user`, `agent`, `project` or `unknown`.
+
+Save `annotation.json`, replacing `ASSET_ID` with the original audio ID. This
+illustrative 120 BPM grid needs at least eight seconds of audio; replace the grid
+and regions with marks appropriate to your file:
+
+```json
+{
+  "schema": "score-music-annotate/v1",
+  "request_id": "music-marks-001",
+  "asset_id": "ASSET_ID",
+  "source": "user",
+  "timing": {
+    "mode": "fixed",
+    "bpm": "120",
+    "bpm_unit": {"numerator": 1, "denominator": 4},
+    "meter": {"beats": 4, "unit": 4},
+    "origin_frame": 0
+  },
+  "regions": [
+    {"id": "intro", "start": {"bar": 1, "beat": "1"}, "end": {"bar": 2, "beat": "1"}},
+    {"id": "loop", "start": {"bar": 2, "beat": "1"}, "end": {"bar": 4, "beat": "1"}},
+    {"id": "outro", "start": {"bar": 4, "beat": "1"}, "end": {"bar": 5, "beat": "1"}}
+  ]
+}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace music annotate --request annotation.json --json
+python -m score_matter audio --workspace .local/audio-workspace music show ANNOTATION_ID --json
+```
+
+Use `annotation.asset_id` (also `outputs[0].asset_id`) as `ANNOTATION_ID`.
+This is a JSON annotation asset, not playable audio. The saved document includes
+the exact source asset ID, digest and media facts, the supplied coordinates, and
+their resolved frame ranges. It is immutable: changed marks require a new request
+ID and produce a new annotation. Annotating the same WAV under a different audio
+asset ID is a separate binding. Edited outputs never inherit these marks
+automatically; explicitly annotate each new audio asset.
+
+### Coordinate rules
+
+- Bars and beats start at 1. A beat is measured in the meter's denominator unit;
+  in 6/8, beats run from `"1"` up to but excluding `"7"`. Write the next bar's
+  first beat instead of beat 7. Decimal subdivisions such as `"2.5"` are allowed.
+- `bpm_unit` is a fraction of a whole note. Use `1/4` for quarter-note BPM,
+  `1/8` for eighth-note BPM, or `3/8` for dotted-quarter BPM in 6/8. `origin_frame`
+  is the location of bar 1, beat 1; it can follow an unmetered lead-in.
+- BPM, beat subdivisions and seconds use nonnegative decimal **strings**, with
+  at most nine fractional digits. BPM must be greater than zero and at most 1000.
+  Integer fields, including meter units, reject floating-point values and booleans.
+- Each endpoint can instead be `{"frame": 8000}` or `{"seconds": "1.25"}`.
+  For free or uncertain timing, use `{"mode":"free"}` or `{"mode":"unknown"}`
+  and only frame/second endpoints. A variable tempo map is not supported.
+- All conversions use exact fractions from the absolute origin and round only
+  once with `rational-half-up/v1`: nonnegative half frames round upwards.
+  Results report `exact_frame`, actual `frame`, `error_frames` and
+  `error_seconds`; fractions are strings, so large intermediate integers do not
+  lose JSON precision. There is no repeated per-beat rounding drift.
+- Regions are half-open: start is included, end excluded. An end at the audio's
+  frame-count boundary is valid. The exact coordinate must fit before rounding,
+  and the resulting range must remain nonempty. Neither the grid nor names prove
+  that the file actually follows that tempo or musical structure.
+
+### Plan, inspect and explicitly execute
+
+`music plan` saves an immutable plan; it does not render audio. For example,
+`loop-plan.json` selects the marked loop with no overlap:
+
+```json
+{"schema":"score-music-plan/v1","request_id":"music-loop-plan-001","annotation_id":"ANNOTATION_ID","region_ids":["loop"],"target":{"kind":"loop","crossfade_frames":0}}
+```
+
+```sh
+python -m score_matter audio --workspace .local/audio-workspace music plan --request loop-plan.json --json
+python -m score_matter audio --workspace .local/audio-workspace music show PLAN_ID --json
+python -m score_matter audio --workspace .local/audio-workspace music execute PLAN_ID --json
+```
+
+Use the returned `plan.asset_id` as `PLAN_ID`. The plan stores its exact annotation
+and audio references, resolved ranges and errors, a complete Core request, and
+the Core resolution digest. `target: {"kind":"trim"}` extracts one named range;
+trim and loop plans each take exactly one region. Loop overlap is explicit;
+`crossfade_frames` must be zero or at least two frames and at most half the range.
+The plan reports the final `period_frames`, exact `period_seconds`, source offset
+and removed frames. An overlap shortens the loop, so its period is not necessarily
+the original number of bars. Neither zero overlap nor crossfading guarantees a
+musically seamless result.
+
+Execution delegates the frozen request to Core's existing trim/loop operations
+with the saved resolution digest. It returns playable audio in `outputs`, keeps
+the plan and annotation references, and preserves Core failure status. Select
+the output into a session separately using the current observed revision.
+Capabilities expose the full annotation and plan request schemas under
+`product_capabilities.music`.
+
+### Add protection without removing existing locks
+
+A constraints plan requires the session to select the annotation's exact source
+asset. Read context first. For a session named `exploration` currently at revision
+2, a plan to protect the intro is:
+
+```json
+{"schema":"score-music-plan/v1","request_id":"music-lock-plan-001","annotation_id":"ANNOTATION_ID","region_ids":["intro"],"target":{"kind":"constraints","session_id":"exploration","expected_revision":2}}
+```
+
+Plan and execute this with the same commands above. Planning unions the named
+ranges with the existing mapped locks at that revision, merging overlapping or
+adjacent ranges. The final union must fit Core's 16-region limit. The plan freezes
+the complete resulting constraints request; execution does not recalculate it
+against a newer selection. An outdated revision fails before any new lock change.
+Removing locks remains an explicit Core constraints operation.
+
+Subsequent trim/loop plans can include a Core protection reference in `target`,
+for example `"protection":{"session_id":"exploration","revision":3}` after
+the lock mutation advances that session. Core rejects operations that discard or
+modify protected PCM; extracting only the loop would therefore fail if it removes
+the protected intro. These references use Core's constraint-set validation, not
+a blanket requirement that the referenced revision remain the latest selection.
+
+### Plan identity and retries
+
+The Core execution request ID is derived from the plan request and the exact
+annotation/audio references. Two annotation identities cannot silently share
+one execution identity merely because their frame ranges match. Annotation and
+plan publication use the existing complete-publication transaction; execution
+uses the existing Core action transaction or session mutation. There is no atomic
+transaction spanning all three steps.
+
+Replaying the same annotate or plan request returns its original saved result;
+changing its inputs under that ID conflicts. Repeating `music execute PLAN_ID`
+returns its completed receipt even after later session changes. The plan's
+`core_request.request_id` can also be queried with `action show` for trim/loop,
+or `session request` for constraints. An unfinished action claim remains
+`recovery_pending`; execution never invents a replacement ID or regenerates audio.
+The saved plan continues to link the annotation to the Core request even when
+that request is queried directly through the Core commands. If executing the
+frozen trim/loop request directly, also pass its saved digest with Core's
+`--expected-resolution-digest`; `music execute` supplies this check for you.
 
 ## Shared operations and continued work
 

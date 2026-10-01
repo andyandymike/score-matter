@@ -34,7 +34,7 @@ def main():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     for directory, pattern in [('tests', 'test_audio.py'), ('tests', 'test_sa3_edit.py'),
-                               ('tests', 'test_candidate_registration.py')]:
+                               ('tests', 'test_candidate_registration.py'), ('tests', 'test_music_annotations.py')]:
         suite.addTests(loader.discover(str(ROOT / directory), pattern=pattern))
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
     require(outcome.wasSuccessful() and not outcome.skipped, "Shared audio tests must pass without skips")
@@ -117,6 +117,55 @@ def main():
             require(decoded["audio_model_calls"] == 0, "Decoding must not call a model")
             asset = next(item for item in decoded["outputs"] if item["role"] == "audio")
 
+        if PRODUCT == "score-matter":
+            from matter_audio_core.media import decode_wav
+            require(capabilities["product_capabilities"]["music"]["rounding"] == "rational-half-up/v1",
+                    "Musical coordinates must advertise their rounding profile")
+            annotation_request = {"schema": "score-music-annotate/v1", "request_id": "music-annotation",
+                "asset_id": asset["asset_id"], "source": "agent",
+                "timing": {"mode": "fixed", "bpm": "120", "bpm_unit": {"numerator": 3, "denominator": 8},
+                           "meter": {"beats": 6, "unit": 8}, "origin_frame": 0},
+                "regions": [{"id": "half", "start": {"bar": 1, "beat": "1"}, "end": {"bar": 1, "beat": "4"}},
+                            {"id": "bar", "start": {"bar": 1, "beat": "1"}, "end": {"bar": 2, "beat": "1"}}]}
+            annotation = write(["music", "annotate"], annotation_request)
+            annotation_id = annotation["outputs"][0]["asset_id"]
+            require(write(["music", "annotate"], annotation_request) == annotation, "Music annotation replay changed")
+            saved_annotation = call("music", "show", annotation_id)["document"]
+            require(saved_annotation["audio"]["asset_id"] == asset["asset_id"]
+                    and saved_annotation["audio"]["digest"] == asset["digest"], "Music annotation lost exact audio binding")
+            trim_request = {"schema": "score-music-plan/v1", "request_id": "music-trim-plan",
+                "annotation_id": annotation_id, "region_ids": ["half"], "target": {"kind": "trim"}}
+            trim_plan = write(["music", "plan"], trim_request)
+            require(len(trim_plan["outputs"]) == 1 and trim_plan["outputs"][0]["role"] == "music_plan",
+                    "Planning must publish metadata only")
+            call("action", "show", trim_plan["document"]["core_request"]["request_id"], expected_error="request_not_found")
+            trim_result = call("music", "execute", trim_plan["outputs"][0]["asset_id"])
+            require(trim_result["audio_model_calls"] == 0 and trim_result["outputs"][0]["media"]["frame_count"] == 4000,
+                    "6/8 dotted-quarter trim has the wrong duration")
+            require(decode_wav((workspace / trim_result["outputs"][0]["locator"]).read_bytes()).payload
+                    == decode_wav(original).payload[:8000], "Music trim changed selected PCM")
+            require(not (workspace / "sessions.sqlite3").exists(), "Musical annotation or execution created a session")
+            loop_request = {**trim_request, "request_id": "music-loop-plan", "region_ids": ["bar"],
+                            "target": {"kind": "loop", "crossfade_frames": 64}}
+            music_loop_plan = write(["music", "plan"], loop_request)
+            music_loop_result = call("music", "execute", music_loop_plan["outputs"][0]["asset_id"])
+            music_loop = music_loop_result["outputs"][0]
+            period = music_loop_plan["document"]["loop"]
+            require(period["source_window_frames"] == 8000 and period["removed_frames"] == 64
+                    and period["period_frames"] == music_loop["media"]["frame_count"] == 7936
+                    and period["period_seconds"] == "124/125", "Overlap must shorten the advertised musical period")
+            require(call("music", "execute", music_loop_plan["outputs"][0]["asset_id"]) == music_loop_result,
+                    "Music execution replay changed its receipt")
+            require(saved_annotation == call("music", "show", annotation_id)["document"], "Editing changed source annotations")
+            write(["session", "create"], {"schema": "matter-session-create/v1", "request_id": "music-session-create",
+                  "session_id": "music-check", "name": "Musical engineering fixture", "asset_id": asset["asset_id"]})
+            lock_plan = write(["music", "plan"], {**trim_request, "request_id": "music-lock-plan",
+                "target": {"kind": "constraints", "session_id": "music-check", "expected_revision": 1}})
+            call("music", "execute", lock_plan["outputs"][0]["asset_id"])
+            music_context = call("context", "show", "music-check")
+            require(music_context["current"]["selected_asset"]["asset_id"] == asset["asset_id"]
+                    and music_context["feedback"] == [], "Music planning selected an edit or invented listening feedback")
+
         write(["session", "create"], {"schema": "matter-session-create/v1", "request_id": "session-create",
               "session_id": "check", "name": "Engineering fixture"})
         selection = {"schema": "matter-session-select/v1", "request_id": "select-input", "session_id": "check",
@@ -164,6 +213,7 @@ def main():
 
     print(json.dumps({"status": "passed", "product": PRODUCT, "core_version": "0.6.0", "adapter_tests": outcome.testsRun,
                       "cli_calls": calls, "exported_wavs": 2, "exact_export_bytes": True,
+                      "music_coordinates": "explicit_grid_and_immutable_plan", "loop_period_accounts_for_overlap": True,
                       "audio_model_calls": 0, "human_listening": "not_performed"}))
     return 0
 
