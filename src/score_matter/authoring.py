@@ -158,6 +158,7 @@ def generate_sa3_wav(
     settings: SA3GenerationSettings | None = None,
     output: Path | None = None,
     output_root: Path | None = None,
+    record_root: Path | None = None,
     runtime_root: Path | None = None,
 ) -> SA3GenerationResult:
     """Run exactly one local SA3 process and return one playable WAV.
@@ -247,7 +248,11 @@ def generate_sa3_wav(
         if output is None:
             _discard_empty_directory(destination.parent)
     record_path, record_warning = _write_local_record(
-        record_root=DEFAULT_OUTPUT_ROOT / "records",
+        record_root=(
+            record_root.expanduser().resolve(strict=False)
+            if record_root is not None
+            else DEFAULT_OUTPUT_ROOT / "records"
+        ),
         destination=destination,
         prompt=clean_prompt,
         settings=chosen,

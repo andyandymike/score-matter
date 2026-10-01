@@ -59,6 +59,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Override the ScoreMatter-local root used when --out is omitted.",
     )
+    generate_parser.add_argument(
+        "--record-root",
+        type=Path,
+        help="Override generation record directory; defaults to ScoreMatter-local records",
+    )
     generate_parser.add_argument("--seconds", type=int, default=20)
     generate_parser.add_argument("--seed", type=int)
     generate_parser.add_argument("--steps", type=int, default=8)
@@ -252,6 +257,7 @@ def _handle_generate(args: argparse.Namespace) -> int:
         settings=settings,
         output=args.out,
         output_root=args.output_root,
+        record_root=args.record_root,
         runtime_root=args.runtime_root,
     )
     if result.record_warning is not None:

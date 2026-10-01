@@ -51,7 +51,10 @@ def _runtime(root):
     encoder = runtime.root / COMPONENTS[3]
     if not encoder.is_file() or not encoder.stat().st_size:
         raise AudioError("sa3_encoder_unavailable", "Local inpainting requires the SAME-L encoder")
-    driver = "".join(runtime.script.read_text(encoding="utf-8").split())
+    try:
+        driver = "".join(runtime.script.read_text(encoding="utf-8").split())
+    except (OSError, UnicodeError) as exc:
+        raise AudioError("sa3_driver_unavailable", "Local SA3 driver must be readable UTF-8 source") from exc
     required = ("SAMPLE_RATE=44100", "SAMPLES_PER_LATENT=4096",
         "int(round(inp_start_sec*SAMPLE_RATE/SAMPLES_PER_LATENT))",
         "int(round(inp_end_sec*SAMPLE_RATE/SAMPLES_PER_LATENT))",

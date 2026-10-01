@@ -8,6 +8,9 @@ comparisons, loops, scene timelines, cue packages and measured local search.
 
 ## Install from a clean checkout
 
+`score-matter audio` supports Windows and Linux only. The separate generation
+and evidence commands retain their own platform and runtime requirements.
+
 Use Python 3.10+ and Git. Run from this repository's root. The build step accesses
 GitHub and the Python package index for source and tooling; it downloads no audio
 model. Create and activate an environment:
@@ -17,7 +20,7 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-On Linux/macOS, activate with `source .venv/bin/activate` instead. Then run the
+On Linux, activate with `source .venv/bin/activate` instead. Then run the
 same commands on either platform:
 
 ```sh
