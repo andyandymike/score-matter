@@ -3,7 +3,7 @@
 `score-matter audio` provides shared editing and an optional adapter for an
 already configured local SA3 inpainting runtime. Existing `generate` remains a
 separate entry point.
-Both products use Matter Audio Core **0.6.1** for sessions, PCM protection, jobs,
+Both products use Matter Audio Core **0.7.0** for sessions, PCM protection, jobs,
 comparisons, loops, scene timelines, cue packages and measured local search.
 
 ## Install from a clean checkout
@@ -32,12 +32,12 @@ python -X utf8 tools/check_shared_audio.py
 ```
 
 `requirements-audio.txt` builds the core from immutable commit
-`9ba1b8b1536d05beb8ebaeda39ba76cef0e92538`. It does not assume the core is on PyPI.
+`54af9032afe5cb5b446e1c00a634b0f83af7fbc1`. It does not assume the core is on PyPI.
 The second step installs only the collected wheels. Retain that directory for
 offline installation on compatible Python/platform environments. Transitive
 third-party dependencies are resolved during the build; this is not a lockfile
 for every platform or a byte-reproducible wheel build. An absent core or a version
-other than 0.6.1 returns a structured installation error.
+other than 0.7.0 returns a structured installation error.
 
 The wheel installation includes ScoreMatter's `audio` extra and refreshes its
 installed dependency metadata. Base-only installation with `python -m pip install .`
@@ -592,13 +592,13 @@ Cue exports bind exact WAV bytes and optional saved selections. Comparison-page
 preview gain never changes delivery. Normalization uses RMS/peak, not LUFS;
 overlap loops shorten the selected window; feature distance does not provide
 semantic audio understanding. See the pinned
-[core production guide](https://github.com/andyandymike/matter-audio-core/blob/9ba1b8b1536d05beb8ebaeda39ba76cef0e92538/docs/production.md)
+[core production guide](https://github.com/andyandymike/matter-audio-core/blob/54af9032afe5cb5b446e1c00a634b0f83af7fbc1/docs/production.md)
 for examples. These core operations call no audio model. Opening a comparison
 page does not start playback. Listening and game integration remain separate.
 
 ## Upgrade an existing workspace
 
-Stop clients and retain a backup before upgrading. Core 0.6.1 uses SQLite schema
+Stop clients and retain a backup before upgrading. Core 0.7.0 uses SQLite schema
 4, the same schema as 0.5. For an older workspace:
 
 ```sh
@@ -648,3 +648,104 @@ wall time and failures remain attached to each attempt, even if audio publicatio
 fails. A launched cancelled attempt counts as a local model call; an uncertain
 launch is null, not zero. There are no automatic inference retries or paid API
 calls in this path. Legacy `generate` remains a separate API.
+
+### Reassemble an existing proposal without inference
+
+Use `proposal plan` when the generated material is useful but its splice needs a
+different edge transition or a narrower write window. This is explicit reuse of
+one recorded result, not prompt-based caching. It needs the successful
+`score.sa3_inpaint/v1` action request ID, its original base asset and its
+`model_proposal` output from the same result. An imported WAV, another generation's
+proposal with identical PCM, or the assembled final output cannot stand in for
+that proposal. The runtime and weights need not still be installed.
+
+```json
+{
+  "schema": "score-sa3-reassembly/v1",
+  "request_id": "softer-edit-edges",
+  "source_request_id": "original-inpaint-action",
+  "base_asset_id": "a_REPLACE_WITH_ORIGINAL_BASE_ID_0",
+  "proposal_asset_id": "a_REPLACE_WITH_ORIGINAL_GENERATION_GROUP_1",
+  "assembly": {
+    "transition_frames": 441
+  },
+  "protection": {
+    "session_id": "track",
+    "revision": 3
+  }
+}
+```
+
+Replace the illustrative asset IDs and revision with actual values. For a managed
+generation, use the completed attempt's action request ID, not its job ID.
+`assembly` can additionally contain both `start_frame` and `end_frame`, defining
+a nonempty subset of the original allowed write window. Source frames keep their
+original absolute positions; the proposal cannot be shifted or pasted elsewhere.
+This narrows the PCM assembly only: it does not change the model's original latent
+mask or claim that the model regenerated the narrower region. Transitions stay
+inside the chosen window and must fit without overlapping. Core's linear Q24
+splice semantics apply, including the existing one-frame transition behavior.
+
+```powershell
+python -m score_matter audio --workspace .local/audio proposal plan --request reuse.json --json
+python -m score_matter audio --workspace .local/audio proposal show PLAN_ASSET_ID --json
+python -m score_matter audio --workspace .local/audio proposal execute PLAN_ASSET_ID --json
+```
+
+The immutable plan saves the original receipt fingerprint, generation resolution,
+exact base/proposal/final-output references, chosen write window, and frozen Core
+`splice/v1` request and resolution digest. Planning verifies the recorded action,
+parameters, source digests and parent references, and reconstructs the original
+final PCM from the proposal. Preview reports why this exact proposal is reusable
+and `new_model_inferences: 0`. Loading a plan repeats these checks; executing it
+only performs Core PCM assembly. Complete publication metadata is size-checked
+before a request claim is created.
+
+If `protection` is omitted, the original generation's protection reference is
+retained when present. An explicit reference is checked against the exact base.
+New execution uses Core's constraint-set/revision checks and verifies protected
+PCM; changed locks can invalidate an unexecuted plan. These are Core protection
+semantics, not a guarantee that an unchanged constraint set has the latest session
+head. Completed execution replays its original receipt even after later session
+changes. The result is a new candidate and is not selected automatically.
+
+Reusing a plan request ID with different inputs or assembly settings is a conflict.
+An interrupted claim remains `recovery_pending`; no model is retried or regenerated.
+New prompts, negative prompts, seeds, steps, guidance, duration or model masks are
+not accepted by this request schema. Use a new generation action for those changes.
+Evidence establishes relationships within the trusted local workspace; it is not
+independent attestation of model execution, distribution rights or listening quality.
+
+### Inspect optional backend readiness
+
+```powershell
+python -m score_matter audio doctor --json
+```
+
+Doctor does not require or open an audio workspace. It reports Core readiness
+separately from optional SA3 readiness, checking only the configured runtime,
+Python file, nonempty required model files and bounded UTF-8 driver profile
+markers. It neither imports the model runtime nor hashes weights, starts a
+process, probes a device, downloads files or makes network requests. Configuration
+is identified by a digest rather than exposing local paths or environment values.
+Static `available` does not establish a usable Python installation or successful
+inference; loaded state and actual execution device remain `unknown`.
+
+The report itself succeeds even when an optional backend needs attention. Consult
+`summary`, the backend's `availability`, and each check's reason/remedy. Missing
+SA3 does not disable ordinary PCM editing or existing-proposal reassembly.
+
+## Signal locations and optional transcription
+
+Core 0.7 adds `quality <asset-id> --profile generic|music|speech --json` and
+`quality/v1`. Reports identify clipping risk, low-level regions and relative
+level changes with exact frame ranges, scan coverage and advisory warnings.
+They do not change audio or establish listening acceptance. See the
+[Core signal guide](https://github.com/andyandymike/matter-audio-core/blob/54af9032afe5cb5b446e1c00a634b0f83af7fbc1/docs/quality.md).
+
+A separately installed MIT HTTP client can save speech transcripts and SRT/VTT
+in an existing product-owned workspace. Use its matching `--product score`
+option and the exact registered source asset. Only explicit execution uploads
+audio; resolve, doctor, saved-result replay and export are offline. VoiceStudio
+remains an optional independently deployed service with its own license.
+See the [client guide](https://github.com/andyandymike/matter-audio-core/blob/54af9032afe5cb5b446e1c00a634b0f83af7fbc1/integrations/voicestudio/README.md).

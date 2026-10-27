@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-audio = ["matter-audio-core==0.6.1"]
+audio = ["matter-audio-core==0.7.0"]
 
 [project.urls]
 Homepage = "https://github.com/andyandymike/score-matter"

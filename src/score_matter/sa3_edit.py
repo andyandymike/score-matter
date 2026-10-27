@@ -134,7 +134,9 @@ class SA3EditAdapter:
             self.cached_stamp, self.cached_snapshot = stamp, snapshot
         return runtime, self.cached_snapshot
 
-    def resolve(self, parameters, pcm):
+    @staticmethod
+    def resolve_recorded(parameters, pcm, backend):
+        """Reconstruct the frozen profile without touching a model runtime."""
         if (pcm.sample_rate, pcm.channels) != (RATE, 2) or not RATE <= pcm.frames <= 120 * RATE:
             raise AudioError("sa3_input_unsupported", "Inpaint accepts 1–120 seconds of 44.1 kHz stereo PCM16; decode explicitly first")
         start, end = parameters["start_frame"], parameters["end_frame"]
@@ -152,7 +154,6 @@ class SA3EditAdapter:
             raise AudioError("model_mask_empty", "Requested edit collapses to an empty SA3 latent mask")
         transition = parameters.get("transition_frames", min(882, (end - start) // 2))
         splice_plan = resolve_splice({"start_frame": start, "end_frame": end, "transition_frames": transition}, [pcm, pcm])
-        _, signature = self.signature()
         window = {"start_frame": start, "end_frame": end}
         return {"prompt": parameters["prompt"], "negative_prompt": parameters.get("negative_prompt"),
             "seed": parameters["seed"], "steps": parameters.get("steps", 8), "threads": parameters.get("threads", 8),
@@ -161,7 +162,12 @@ class SA3EditAdapter:
             "context_read": {"start_frame": 0, "end_frame": pcm.frames}, "requested_edit": window,
             "model_mask": {"latent_start": latent_start, "latent_end": latent_end, "samples_per_latent": LATENT,
                 "start_frame": latent_start * LATENT, "end_frame": latent_end * LATENT, "rounding": "python-round-ties-to-even/v1"},
-            "allowed_write": [window], "splice": splice_plan, "backend": signature}
+            "allowed_write": [window], "splice": splice_plan, "backend": backend}
+
+    def resolve(self, parameters, pcm):
+        resolved = self.resolve_recorded(parameters, pcm, None)
+        _, signature = self.signature()
+        return {**resolved, "backend": signature}
 
     def execute(self, parameters, pcm):
         runtime, signature = self.signature()
@@ -202,7 +208,7 @@ class SA3EditAdapter:
         try:
             _runtime(self.runtime_root)
             availability = "available"
-        except AudioError:
+        except (AudioError, OSError, UnicodeError):
             availability = "unavailable"
         return Operation("score.sa3_inpaint/v1", SCHEMA, self.resolve, self.execute, PROFILE,
             mapping=identity_mapping, writes=lambda p, pcm: p["allowed_write"], realization="model_with_pcm_assembly",
